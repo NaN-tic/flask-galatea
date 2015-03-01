@@ -29,7 +29,10 @@ def uri(uri_str):
     if not uris:
         abort(404)
 
-    uri = uris[0]
+    return uri_aux(uris[0])
+
+
+def uri_aux(uri):
     if uri.type in ('internal_redirection', 'external_redirection'):
         target = (uri.internal_redirection.uri
             if uri.type == 'internal_redirection' else uri.external_url)
