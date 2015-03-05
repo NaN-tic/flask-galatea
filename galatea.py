@@ -25,6 +25,7 @@ def uri(uri_str):
             ('uri', '=', uri_str),
             ('active', '=', True),
             ('website', '=', GALATEA_WEBSITE),
+            ('anchor', '=', False),
             ])
     if not uris:
         abort(404)
