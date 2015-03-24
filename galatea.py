@@ -27,8 +27,20 @@ def uri(uri_str):
             ('website', '=', GALATEA_WEBSITE),
             ('anchor', '=', False),
             ])
-    if not uris:
-        abort(404)
+        if not uris:
+            parts = uri_str.strip().strip('/').split('/')
+            key = parts[-1]
+            uris = Uri.search([
+                    ('slug', '=', key),
+                    ('active', '=', True),
+                    ('website', '=', GALATEA_WEBSITE),
+                    ('anchor', '=', False),
+                    ])
+            if uris:
+                return redirect(uris[0].uri, code=302)
+            
+            if not uris:
+                abort(404)
 
     return uri_aux(uris[0])
 
