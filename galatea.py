@@ -37,7 +37,7 @@ def uri(uri_str):
                     ('anchor', '=', False),
                     ])
             if uris:
-                return redirect(uris[0].uri, code=302)
+                return redirect(uris[0].uri, code=301)
             
             if not uris:
                 abort(404)
