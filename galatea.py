@@ -39,6 +39,17 @@ def uri(uri_str):
             if uris:
                 return redirect(uris[0].uri, code=301)
             
+            for lang in current_app.config.get('ACCEPT_LANGUAGES').keys():
+                with Transaction().set_context(language=lang):
+                    uris = Uri.search([
+                            ('slug', '=', key),
+                            ('active', '=', True),
+                            ('website', '=', GALATEA_WEBSITE),
+                            ('anchor', '=', False),
+                            ])
+                if uris:
+                    return redirect(uris[0].uri, code=301)
+
             if not uris:
                 abort(404)
 
