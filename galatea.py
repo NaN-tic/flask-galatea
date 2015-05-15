@@ -35,6 +35,7 @@ def uri(uri_str):
                     ('active', '=', True),
                     ('website', '=', GALATEA_WEBSITE),
                     ('anchor', '=', False),
+                    ('sitemap', '=', True),
                     ])
             if uris:
                 return redirect(uris[0].uri, code=301)
@@ -46,6 +47,7 @@ def uri(uri_str):
                             ('active', '=', True),
                             ('website', '=', GALATEA_WEBSITE),
                             ('anchor', '=', False),
+                            ('sitemap', '=', True),
                             ])
                 if uris:
                     return redirect(uris[0].uri, code=301)
