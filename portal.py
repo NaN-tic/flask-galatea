@@ -106,7 +106,7 @@ class RegistrationForm(Form):
     email = TextField(__('Email'), [validators.Required(), validators.Email()])
     password = PasswordField(__('Password'), [validators.Required()])
     confirm = PasswordField(__('Confirm'))
-    phone = PasswordField(__('Phone'))
+    phone = TextField(__('Phone'))
     vat_country = SelectField(__('VAT Country'), choices=VAT_COUNTRIES)
     vat_number = TextField(__('VAT Number'), vat_required)
 
