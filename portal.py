@@ -106,6 +106,7 @@ class RegistrationForm(Form):
     email = TextField(__('Email'), [validators.Required(), validators.Email()])
     password = PasswordField(__('Password'), [validators.Required()])
     confirm = PasswordField(__('Confirm'))
+    phone = PasswordField(__('Phone'))
     vat_country = SelectField(__('VAT Country'), choices=VAT_COUNTRIES)
     vat_number = TextField(__('VAT Number'), vat_required)
 
@@ -596,18 +597,26 @@ def registration(lang):
                     party_data['identifiers'] = [('create', [vat_party])]
 
             # contact mechanisms
-            contact_data = {
-                'party': party.id,
-                'type': 'email',
-                'value': data.get('email'),
-                }
-            party_data['contact_mechanisms'] = [('create', [contact_data])]
+            contact_datas = []
+            if data.get('email'):
+                contact_datas.append({
+                    'type': 'email',
+                    'value': data['email'],
+                    })
+            if data.get('phone'):
+                contact_datas.append({
+                    'type': 'phone',
+                    'value': data['phone'],
+                    })
+            party_data['contact_mechanisms'] = [('create', contact_datas)]
 
             # save party
             party, = Party.create([party_data])
 
         del data['eu_vat']
         del data['vat_code']
+        if data.get('phone'):
+            del data['phone']
 
         data['company'] = website.company.id
         data['party'] = party.id
@@ -620,6 +629,7 @@ def registration(lang):
         email = request.form.get('email')
         password = request.form.get('password')
         confirm = request.form.get('confirm')
+        phone = request.form.get('phone')
         vat_country = request.form.get('vat_country')
         vat_number = request.form.get('vat_number')
 
@@ -655,6 +665,7 @@ def registration(lang):
         data = {
             'display_name': name,
             'email': email,
+            'phone': phone,
             'password': password,
             'activation_code': act_code,
             'eu_vat': eu_vat,
