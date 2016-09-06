@@ -8,7 +8,8 @@ from flask.ext.mail import Mail, Message
 from flask.ext.wtf import Form
 from wtforms import TextField, PasswordField, SelectField, HiddenField, validators
 from .tryton import tryton
-from .signals import login as slogin, failed_login as sfailed_login, logout as slogout
+from .signals import login as slogin, failed_login as sfailed_login, \
+    logout as slogout, registration as sregistration
 from .helpers import login_required, manager_required
 from trytond.transaction import Transaction
 
@@ -109,6 +110,7 @@ class RegistrationForm(Form):
     phone = TextField(__('Phone'))
     vat_country = SelectField(__('VAT Country'), choices=VAT_COUNTRIES)
     vat_number = TextField(__('VAT Number'), vat_required)
+    code = TextField(__('Code'))
 
     def __init__(self, *args, **kwargs):
         Form.__init__(self, *args, **kwargs)
@@ -623,8 +625,8 @@ def registration(lang):
 
         data['company'] = website.company.id
         data['party'] = party.id
-        user_ids = GalateaUser.create([data])
-        return user_ids
+        user, = GalateaUser.create([data])
+        return user
 
     form = RegistrationForm()
     if form.validate_on_submit():
@@ -674,11 +676,16 @@ def registration(lang):
             'eu_vat': eu_vat,
             'vat_code': vat_code,
             }
-        user_ids = _save_user(data)
-        if user_ids:
+        user = _save_user(data)
+        if user:
             # send email activation account
             send_activation_email(data)
-
+            sregistration.send(
+                current_app._get_current_object(),
+                user=user,
+                data=request.form,
+                website=current_app.config.get('TRYTON_GALATEA_SITE', None),
+                )
             flash('%s: %s' % (
                 _('An email has been sent to activate your account'),
                 email))
