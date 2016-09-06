@@ -26,8 +26,8 @@ portal = Blueprint('portal', __name__, template_folder='templates')
 GALATEA_WEBSITE = current_app.config.get('TRYTON_GALATEA_SITE')
 REGISTRATION_VAT = current_app.config.get('REGISTRATION_VAT')
 DEFAULT_COUNTRY = current_app.config.get('DEFAULT_COUNTRY')
-REDIRECT_AFTER_LOGIN = current_app.config.get('REDIRECT_AFTER_LOGIN', 'index')
-REDIRECT_AFTER_LOGOUT = current_app.config.get('REDIRECT_AFTER_LOGOUT', 'index')
+REDIRECT_AFTER_LOGIN = current_app.config.get('REDIRECT_AFTER_LOGIN')
+REDIRECT_AFTER_LOGOUT = current_app.config.get('REDIRECT_AFTER_LOGOUT')
 LOGIN_EXTRA_FIELDS = current_app.config.get('LOGIN_EXTRA_FIELDS', [])
 
 HAS_VATNUMBER = False
@@ -287,7 +287,10 @@ def login(lang):
                     path_redirect = request.form['redirect']
                     if not path_redirect[:4] == 'http':
                         return redirect(path_redirect)
-                return redirect(url_for(REDIRECT_AFTER_LOGIN, lang=g.language))
+                if REDIRECT_AFTER_LOGIN:
+                    return redirect(url_for(REDIRECT_AFTER_LOGIN, lang=g.language))
+                else:
+                    return redirect(url_for(g.language))
         else:
             flash(_("User email don't exist or disabled user."), 'danger')
 
@@ -323,7 +326,10 @@ def logout(lang):
         )
 
     flash(_('You are logged out.'))
-    return redirect(url_for(REDIRECT_AFTER_LOGOUT, lang=g.language))
+    if REDIRECT_AFTER_LOGOUT:
+        return redirect(url_for(REDIRECT_AFTER_LOGOUT, lang=g.language))
+    else:
+        return redirect(url_for(g.language))
 
 @portal.route('/new-password', methods=["GET", "POST"], endpoint="new-password")
 @login_required
