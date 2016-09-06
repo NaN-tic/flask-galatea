@@ -618,7 +618,7 @@ def registration(lang):
 
         del data['eu_vat']
         del data['vat_code']
-        if data.get('phone'):
+        if 'phone' in data:
             del data['phone']
 
         data['company'] = website.company.id
