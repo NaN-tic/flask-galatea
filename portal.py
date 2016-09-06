@@ -428,7 +428,7 @@ def reset_password(lang):
         send_reset_email(user)
 
         flash('%s: %s' % (
-            _('An email has been sent to reset your password.'),
+            _('An email has been sent to reset your password'),
             user['email']))
         form.reset()
 
@@ -677,7 +677,7 @@ def registration(lang):
             send_activation_email(data)
 
             flash('%s: %s' % (
-                _('An email has been sent to activate your account.'),
+                _('An email has been sent to activate your account'),
                 email))
             form.reset()
 
