@@ -26,6 +26,8 @@ portal = Blueprint('portal', __name__, template_folder='templates')
 
 GALATEA_WEBSITE = current_app.config.get('TRYTON_GALATEA_SITE')
 REGISTRATION_VAT = current_app.config.get('REGISTRATION_VAT')
+REGISTRATION_VAT_CHECK_CUSTOMER = current_app.config.get(
+    'REGISTRATION_VAT_CHECK_CUSTOMER', False)
 DEFAULT_COUNTRY = current_app.config.get('DEFAULT_COUNTRY')
 REDIRECT_AFTER_LOGIN = current_app.config.get('REDIRECT_AFTER_LOGIN')
 REDIRECT_AFTER_LOGOUT = current_app.config.get('REDIRECT_AFTER_LOGOUT')
@@ -566,6 +568,10 @@ def registration(lang):
                 ('vat_code', '=', vat_code),
                 ], limit=1)
             if parties:
+                if REGISTRATION_VAT_CHECK_CUSTOMER:
+                    flash(_('Exist a customer with your VAT. Please, ' \
+                        'login or contact us to create a new user.'), "danger")
+                    return
                 party, = parties
 
         if not party:
@@ -605,7 +611,8 @@ def registration(lang):
 
         data['company'] = website.company.id
         data['party'] = party.id
-        GalateaUser.create([data])
+        user_ids = GalateaUser.create([data])
+        return user_ids
 
     form = RegistrationForm()
     if form.validate_on_submit():
@@ -653,15 +660,15 @@ def registration(lang):
             'eu_vat': eu_vat,
             'vat_code': vat_code,
             }
-        _save_user(data)
+        user_ids = _save_user(data)
+        if user_ids:
+            # send email activation account
+            send_activation_email(data)
 
-        # send email activation account
-        send_activation_email(data)
-
-        flash('%s: %s' % (
-            _('An email has been sent to activate your account.'),
-            email))
-        form.reset()
+            flash('%s: %s' % (
+                _('An email has been sent to activate your account.'),
+                email))
+            form.reset()
 
     form.vat_country.data = DEFAULT_COUNTRY.upper() or ''
     return render_template('registration.html', form=form)
