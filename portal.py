@@ -243,7 +243,9 @@ def login(lang):
             flash(_("Your account has not been activated yet!"))
             return False
 
-        password += user.get('salt', '')
+        salt = user['salt']
+        if salt:
+            password += salt
         if hashlib:
             digest = hashlib.sha1(password).hexdigest()
         else:
