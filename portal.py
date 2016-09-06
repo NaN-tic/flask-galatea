@@ -234,7 +234,7 @@ def login(lang):
 
     def _validate_user(user, password):
         '''Validate user and password
-        :param user: string
+        :param user: object
         :param password: string
         return Bool
         '''
@@ -502,12 +502,7 @@ def activate(lang):
         session['user'] = user['id']
         session['display_name'] = user['display_name']
         flash(_('You are logged in'))
-        slogin.send(current_app._get_current_object(),
-            user=user['id'],
-            session=session.sid,
-            website=current_app.config.get('TRYTON_GALATEA_SITE', None),
-            )
-
+        # Not signal login because cannot execute UPDATE in a read-only transaction
         return redirect(url_for('.new-password', lang=g.language))
 
     return redirect('/%s/' % g.language)
