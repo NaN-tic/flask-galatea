@@ -12,6 +12,7 @@ from .signals import login as slogin, failed_login as sfailed_login, logout as s
 from .helpers import login_required, manager_required
 from trytond.transaction import Transaction
 
+import stdnum.eu.vat as vat
 import random
 import string
 
@@ -30,21 +31,15 @@ REDIRECT_AFTER_LOGIN = current_app.config.get('REDIRECT_AFTER_LOGIN')
 REDIRECT_AFTER_LOGOUT = current_app.config.get('REDIRECT_AFTER_LOGOUT')
 LOGIN_EXTRA_FIELDS = current_app.config.get('LOGIN_EXTRA_FIELDS', [])
 
-HAS_VATNUMBER = False
-VAT_COUNTRIES = [('', '')]
-try:
-    import vatnumber
-    HAS_VATNUMBER = True
-    for country in vatnumber.countries():
-        VAT_COUNTRIES.append((country, country))
-except ImportError:
-    pass
-
 GalateaUser = tryton.pool.get('galatea.user')
 Website = tryton.pool.get('galatea.website')
 Party = tryton.pool.get('party.party')
 ContactMechanism = tryton.pool.get('party.contact_mechanism')
 Subdivision = tryton.pool.get('country.subdivision')
+
+VAT_COUNTRIES = [('', '')]
+for country in sorted(vat.country_codes):
+    VAT_COUNTRIES.append((country, country.upper()))
 
 
 class LoginForm(Form):
@@ -562,14 +557,13 @@ def registration(lang):
             contact, = contacts
             party = contact.party
 
-        vat_country = data.get('vat_country')
-        vat_number = data.get('vat_number')
+        eu_vat = data.get('eu_vat')
+        vat_code = data.get('vat_code')
 
         # search if vat exist
-        if REGISTRATION_VAT and vat_number:
+        if REGISTRATION_VAT and eu_vat and vat_code:
             parties = Party.search([
-                ('vat_country', '=', vat_country),
-                ('vat_number', '=', vat_number),
+                ('vat_code', '=', vat_code),
                 ], limit=1)
             if parties:
                 party, = parties
@@ -579,20 +573,35 @@ def registration(lang):
                 'name': data.get('display_name'),
                 'addresses': [],
                 }
-            if REGISTRATION_VAT and vat_number:
-                party_data['vat_country'] = vat_country
-                party_data['vat_number'] = vat_number
-            party, = Party.create([party_data])
 
+            # identifiers
+            if REGISTRATION_VAT:
+                if vat_code:
+                    if eu_vat:
+                        vat_party = {
+                            'type': 'eu_vat',
+                            'code': vat_code,
+                            }
+                    else:
+                        vat_party = {
+                            'type': None, # not eu vat
+                            'code': vat_code,
+                            }
+                    party_data['identifiers'] = [('create', [vat_party])]
+
+            # contact mechanisms
             contact_data = {
                 'party': party.id,
                 'type': 'email',
                 'value': data.get('email'),
                 }
-            ContactMechanism.create([contact_data])
+            party_data['contact_mechanisms'] = [('create', [contact_data])]
 
-        del data['vat_country']
-        del data['vat_number']
+            # save party
+            party, = Party.create([party_data])
+
+        del data['eu_vat']
+        del data['vat_code']
 
         data['company'] = website.company.id
         data['party'] = party.id
@@ -619,10 +628,19 @@ def registration(lang):
             flash(_('Email address already exists. Do you forget the password?'))
             return render_template('registration.html', form=form)
 
+        eu_vat = False
         if REGISTRATION_VAT:
-            if not getattr(vatnumber, 'check_vat_' + vat_country.lower())(vat_number):
-                flash(_('Vat number is not valid.'), 'danger')
-                return render_template('registration.html', form=form)
+            if vat_country:
+                eu_vat = True
+                vat_code = '%s%s' % (vat_country.upper(), vat_number)
+                vat_code = vat.compact(vat_code)
+                if not vat.is_valid(vat_code):
+                    flash(_('Vat number is not valid.'), 'danger')
+                    return render_template('registration.html', form=form)
+            elif vat_number:
+                vat_code = '%s' % vat_number
+            else:
+                vat_code = None
 
         act_code = create_act_code(code_type="new")
 
@@ -632,8 +650,8 @@ def registration(lang):
             'email': email,
             'password': password,
             'activation_code': act_code,
-            'vat_country': vat_country,
-            'vat_number': vat_number,
+            'eu_vat': eu_vat,
+            'vat_code': vat_code,
             }
         _save_user(data)
 
