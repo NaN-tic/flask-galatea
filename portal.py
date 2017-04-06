@@ -528,20 +528,23 @@ def registration(lang):
         :param email: string
         return user list[dict]
         '''
-        user = None
-        with Transaction().set_context(active_test=False):
-            users = GalateaUser.search_read([
-                ('email', '=', email),
-                ], limit=1, fields_names=[
-                    'display_name',
-                    'email',
-                    'password',
-                    'salt',
-                    'activation_code',
-                    ])
-        if users:
-            user, = users
-        return user
+        fields = [
+            'party',
+            'display_name',
+            'email',
+            'password',
+            'salt',
+            'activation_code',
+            'manager',
+            ]
+        if LOGIN_EXTRA_FIELDS:
+            fields = fields+LOGIN_EXTRA_FIELDS
+        users = GalateaUser.search_read([
+            ('email', '=', email),
+            ('active', '=', True),
+            ('websites', 'in', [GALATEA_WEBSITE]),
+            ], limit=1, fields_names=fields)
+        return users
 
     def _save_user(data):
         '''Save user values

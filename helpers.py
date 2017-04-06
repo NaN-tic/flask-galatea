@@ -1,5 +1,5 @@
 #This file is part galatea blueprint for Flask.
-#The COPYRIGHT file at the top level of this repository contains 
+#The COPYRIGHT file at the top level of this repository contains
 #the full copyright notices and license terms.
 from flask import redirect, url_for, session,  request, current_app, abort
 from functools import wraps
@@ -20,7 +20,7 @@ def login_required(f):
     def decorated_function(*args, **kwargs):
         logged = session.get('logged_in', None)
         if not logged:
-            return redirect('%s?redirect=%s' % (url_for('galatea.login', lang='es'), request.path))
+            return redirect('%s?redirect=%s' % (url_for('portal.login', lang='es'), request.path))
         return f(*args, **kwargs)
     return decorated_function
 
@@ -29,7 +29,7 @@ def customer_required(f):
     def decorated_function(*args, **kwargs):
         customer = session.get('customer', None)
         if not customer:
-            return redirect('%s?redirect=%s' % (url_for('galatea.logout', lang='es'), request.path))
+            return redirect('%s?redirect=%s' % (url_for('portal.logout', lang='es'), request.path))
         return f(*args, **kwargs)
     return decorated_function
 

@@ -39,7 +39,7 @@ def uri(uri_str):
                     ])
             if uris:
                 return redirect(uris[0].uri, code=301)
-            
+
             for lang in current_app.config.get('ACCEPT_LANGUAGES').keys():
                 with Transaction().set_context(language=lang):
                     uris = Uri.search([
