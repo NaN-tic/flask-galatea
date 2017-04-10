@@ -5,7 +5,7 @@ from flask import Blueprint, request, render_template, current_app, session, \
     jsonify, redirect, url_for, flash, abort, g
 from flask_babel import gettext as _, lazy_gettext as __
 from flask_mail import Mail, Message
-from flask_wtf import Form
+from flask_wtf import FlaskForm as Form
 from wtforms import TextField, PasswordField, SelectField, HiddenField, validators
 from .tryton import tryton
 from .signals import login as slogin, failed_login as sfailed_login, \
@@ -30,19 +30,19 @@ REGISTRATION_VAT = current_app.config.get('REGISTRATION_VAT')
 REGISTRATION_VAT_CHECK_CUSTOMER = current_app.config.get(
     'REGISTRATION_VAT_CHECK_CUSTOMER', False)
 DEFAULT_COUNTRY = current_app.config.get('DEFAULT_COUNTRY')
-REDIRECT_AFTER_LOGIN = current_app.config.get('REDIRECT_AFTER_LOGIN')
-REDIRECT_AFTER_LOGOUT = current_app.config.get('REDIRECT_AFTER_LOGOUT')
+REDIRECT_AFTER_LOGIN = current_app.config.get('REDIRECT_AFTER_LOGIN', 'index')
+REDIRECT_AFTER_LOGOUT = current_app.config.get('REDIRECT_AFTER_LOGOUT', 'index')
 LOGIN_EXTRA_FIELDS = current_app.config.get('LOGIN_EXTRA_FIELDS', [])
+
+VAT_COUNTRIES = [('', '')]
+for country in sorted(vat.country_codes):
+    VAT_COUNTRIES.append((country, country.upper()))
 
 GalateaUser = tryton.pool.get('galatea.user')
 Website = tryton.pool.get('galatea.website')
 Party = tryton.pool.get('party.party')
 ContactMechanism = tryton.pool.get('party.contact_mechanism')
 Subdivision = tryton.pool.get('country.subdivision')
-
-VAT_COUNTRIES = [('', '')]
-for country in sorted(vat.country_codes):
-    VAT_COUNTRIES.append((country, country.upper()))
 
 
 class LoginForm(Form):
@@ -243,10 +243,9 @@ def login(lang):
             flash(_("Your account has not been activated yet!"))
             return False
 
-        salt = user['salt']
         if isinstance(password, unicode):
             password = password.encode('utf-8')
-        salt = user['salt'].encode('utf-8')
+        salt = user.get('salt', '').encode('utf-8')
         if salt:
             password += salt
         if hashlib:
@@ -433,7 +432,7 @@ def reset_password(lang):
         send_reset_email(user)
 
         flash('%s: %s' % (
-            _('An email has been sent to reset your password'),
+            _('An email has been sent to reset your password.'),
             user['email']))
         form.reset()
 
@@ -538,7 +537,7 @@ def registration(lang):
             'manager',
             ]
         if LOGIN_EXTRA_FIELDS:
-            fields = fields+LOGIN_EXTRA_FIELDS
+            fields = fields + LOGIN_EXTRA_FIELDS
         users = GalateaUser.search_read([
             ('email', '=', email),
             ('active', '=', True),
