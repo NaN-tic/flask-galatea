@@ -311,16 +311,8 @@ def logout(lang):
 
     user = session.get('user')
 
-    # Remove all sessions
-    session.pop('logged_in', None)
-    session.pop('user', None)
-    session.pop('display_name', None)
-    session.pop('manager', None)
-    session.pop('customer', None)
-    session.pop('email', None)
-
-    for field in LOGIN_EXTRA_FIELDS: # drop extra session fields
-         session.pop(field, None)
+    # clear all session
+    session.clear()
 
     slogout.send(current_app._get_current_object(),
         user=user,
