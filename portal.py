@@ -259,6 +259,7 @@ def login(lang):
         return True
 
     form = LoginForm()
+
     if form.validate_on_submit():
         email = request.form.get('email')
         password = request.form.get('password')

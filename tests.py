@@ -22,7 +22,7 @@ def test_registration(self):
     # activate
     @tryton.transaction()
     def get_activation_code(email):
-        GalateaUser = tryton.pool.get('portal.user')
+        GalateaUser = tryton.pool.get('galatea.user')
 
         user, = GalateaUser.search([
             ('email', '=', email),
@@ -59,5 +59,4 @@ def test_logout(self):
     # logout
     response = self.client.get(url_for('portal.logout', lang=self.language),
         follow_redirects=True)
-
     assert 'You are logged out' in response.data
