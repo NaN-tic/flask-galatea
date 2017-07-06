@@ -47,6 +47,8 @@ def test_login(self):
         ), follow_redirects=True)
     assert 'You are logged in' in response.data
 
+def test_reset_password(self):
+    '''Test Reset Password Portal Galatea'''
     # reset password
     response = self.client.post(url_for('portal.reset-password', lang=self.language),
         data=dict(
