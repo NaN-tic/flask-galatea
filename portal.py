@@ -646,6 +646,7 @@ def registration(lang):
             return render_template('registration.html', form=form)
 
         eu_vat = False
+        vat_code = None
         if REGISTRATION_VAT:
             if vat_country:
                 eu_vat = True
@@ -656,8 +657,6 @@ def registration(lang):
                     return render_template('registration.html', form=form)
             elif vat_number:
                 vat_code = '%s' % vat_number
-            else:
-                vat_code = None
 
         act_code = create_act_code(code_type="new")
 
