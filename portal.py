@@ -1,17 +1,18 @@
 #This file is part galatea blueprint for Flask.
 #The COPYRIGHT file at the top level of this repository contains
 #the full copyright notices and license terms.
-from flask import Blueprint, request, render_template, current_app, session, \
-    jsonify, redirect, url_for, flash, abort, g
+from flask import (Blueprint, request, render_template, current_app, session,
+    jsonify, redirect, url_for, flash, abort, g)
 from flask_babel import gettext as _, lazy_gettext as __
 from flask_mail import Mail, Message
 from flask_wtf import FlaskForm as Form
 from wtforms import TextField, PasswordField, SelectField, HiddenField, validators
+from flask_login import (UserMixin, login_user, logout_user, login_required,
+    current_user)
 from .tryton import tryton
-from .signals import login as slogin, failed_login as sfailed_login, \
-    logout as slogout, registration as sregistration
-from .helpers import login_required, manager_required
-from trytond.transaction import Transaction
+from .signals import (login as slogin, failed_login as sfailed_login,
+    logout as slogout, registration as sregistration)
+from .helpers import manager_required
 
 import stdnum.eu.vat as vat
 import random
@@ -32,6 +33,7 @@ REGISTRATION_VAT_CHECK_CUSTOMER = current_app.config.get(
 DEFAULT_COUNTRY = current_app.config.get('DEFAULT_COUNTRY')
 REDIRECT_AFTER_LOGIN = current_app.config.get('REDIRECT_AFTER_LOGIN')
 REDIRECT_AFTER_LOGOUT = current_app.config.get('REDIRECT_AFTER_LOGOUT')
+LOGIN_REMEMBER_ME = current_app.config.get('LOGIN_REMEMBER_ME', False)
 LOGIN_EXTRA_FIELDS = current_app.config.get('LOGIN_EXTRA_FIELDS', [])
 
 VAT_COUNTRIES = [('', '')]
@@ -45,8 +47,13 @@ ContactMechanism = tryton.pool.get('party.contact_mechanism')
 Subdivision = tryton.pool.get('country.subdivision')
 
 
+class User(UserMixin):
+    "Login User Mixin"
+    pass
+
+
 class LoginForm(Form):
-    "Login Password form"
+    "Login form"
     email = TextField(_('Email'), [validators.Required(), validators.Email()])
     password = PasswordField(_('Password'), [validators.Required()])
 
@@ -142,6 +149,28 @@ class ActivateForm(Form):
         return True
 
 
+class Galatea(object):
+    '''
+    This object is used to hold the settings used for galatea configuration.
+    '''
+    def __init__(self, app=None):
+        self.login_form = LoginForm
+        self.new_password_form = NewPasswordForm
+        self.reset_password_form = ResetPasswordForm
+        self.registration_form = RegistrationForm
+        self.activate_form = ActivateForm
+
+        self.login_error = _("User email don't exist or disabled user.")
+        self.logout_message = _('You are logged out.')
+
+        if app is not None:
+            self.init_app(app)
+
+    def init_app(self, app):
+        if not hasattr(app, 'extensions'):
+            app.extensions = {}
+        app.extensions['Galatea'] = self
+
 def create_act_code(code_type="new"):
     """Create activation code
     A 12 character activation code indicates reset while 16
@@ -209,28 +238,11 @@ def login(lang):
     if not current_app.config.get('ACTIVE_LOGIN'):
         abort(404)
 
-    def _get_user(email):
-        '''Search user by email
-        :param email: string
-        return user list[dict]
-        '''
-        fields = [
-            'party',
-            'display_name',
-            'email',
-            'password',
-            'salt',
-            'activation_code',
-            'manager',
-            ]
-        if LOGIN_EXTRA_FIELDS:
-            fields = fields+LOGIN_EXTRA_FIELDS
-        users = GalateaUser.search_read([
-            ('email', '=', email),
-            ('active', '=', True),
-            ('websites', 'in', [GALATEA_WEBSITE]),
-            ], limit=1, fields_names=fields)
-        return users
+    if current_user.is_authenticated:
+        if REDIRECT_AFTER_LOGIN:
+            return redirect(url_for(REDIRECT_AFTER_LOGIN, lang=g.language))
+        else:
+            return redirect(url_for(g.language))
 
     def _validate_user(user, password):
         '''Validate user and password
@@ -245,7 +257,7 @@ def login(lang):
 
         if isinstance(password, unicode):
             password = password.encode('utf-8')
-        salt = user.get('salt', '').encode('utf-8')
+        salt = user.salt.encode('utf-8') if user.salt else ''
         if salt:
             password += salt
         if hashlib:
@@ -255,47 +267,27 @@ def login(lang):
         if digest != user['password']:
             flash(_("The password is invalid"), "danger")
             return False
-
         return True
 
-    form = LoginForm()
+    form = current_app.extensions['Galatea'].login_form()
 
     if form.validate_on_submit():
         email = request.form.get('email')
         password = request.form.get('password')
 
-        users = _get_user(email)
-
+        users = GalateaUser.get_user(GALATEA_WEBSITE, request)
         if users:
             user, = users
             login = _validate_user(user, password)
             if login:
-                session['logged_in'] = True
-                session['user'] = user['id']
-                session['display_name'] = user['display_name']
-                session['customer'] = user['party']
-                session['email'] = user['email']
-                for field in LOGIN_EXTRA_FIELDS: # add extra fields in session
-                     session[field] = user[field]
-                if user['manager']:
-                    session['manager'] = True
-                flash(_('You are logged in'))
-                slogin.send(current_app._get_current_object(),
-                    user=user['id'],
-                    session=session.sid,
-                    website=current_app.config.get('TRYTON_GALATEA_SITE', None),
-                    )
-                if request.form.get('redirect'):
-                    # TODO: check redirect is a rule site
-                    path_redirect = request.form['redirect']
-                    if not path_redirect[:4] == 'http':
-                        return redirect(path_redirect)
+                login_user(user, remember=LOGIN_REMEMBER_ME)
+
                 if REDIRECT_AFTER_LOGIN:
                     return redirect(url_for(REDIRECT_AFTER_LOGIN, lang=g.language))
                 else:
                     return redirect(url_for(g.language))
         else:
-            flash(_("User email don't exist or disabled user."), 'danger')
+            flash(current_app.extensions['Galatea'].login_error, 'danger')
 
         data['email'] = email
         sfailed_login.send(form=form)
@@ -307,20 +299,19 @@ def login(lang):
 @tryton.transaction()
 def logout(lang):
     '''Logout App'''
+
     if not current_app.config.get('ACTIVE_LOGIN'):
         abort(404)
 
-    user = session.get('user')
-
-    # clear all session
-    session.clear()
+    logout_user()
 
     slogout.send(current_app._get_current_object(),
-        user=user,
+        user=current_user,
         website=current_app.config.get('TRYTON_GALATEA_SITE', None),
         )
 
-    flash(_('You are logged out.'))
+    flash(current_app.extensions['Galatea'].logout_message)
+
     if REDIRECT_AFTER_LOGOUT:
         return redirect(url_for(REDIRECT_AFTER_LOGOUT, lang=g.language))
     else:
@@ -354,7 +345,7 @@ def new_password(lang):
             return data
         return user
 
-    form = NewPasswordForm()
+    form = current_app.extensions['Galatea'].new_password_form()
     if form.validate_on_submit():
         password = request.form.get('password')
         confirm = request.form.get('confirm')
@@ -407,7 +398,7 @@ def reset_password(lang):
         user = GalateaUser(int(user['id']))
         GalateaUser.write([user], {'activation_code': act_code})
 
-    form = ResetPasswordForm()
+    form = current_app.extensions['Galatea'].reset_password_form()
     if form.validate_on_submit():
         email = request.form.get('email')
 
@@ -438,7 +429,7 @@ def activate(lang):
     act_code = request.args.get('act_code')
     email = request.args.get('email')
 
-    form = ActivateForm()
+    form = current_app.extensions['Galatea'].activate_form()
     if request.form.get('act_code'):
         act_code = request.form.get('act_code')
         email = request.form.get('email')
@@ -623,7 +614,7 @@ def registration(lang):
         user, = GalateaUser.create([data])
         return user
 
-    form = RegistrationForm()
+    form = current_app.extensions['Galatea'].registration_form()
     if form.validate_on_submit():
         name = request.form.get('name')
         email = request.form.get('email')

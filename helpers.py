@@ -15,15 +15,6 @@ def secure(function):
             return function(*args, **kwargs)
     return decorated_function
 
-def login_required(f):
-    @wraps(f)
-    def decorated_function(*args, **kwargs):
-        logged = session.get('logged_in', None)
-        if not logged:
-            return redirect('%s?redirect=%s' % (url_for('portal.login', lang='es'), request.path))
-        return f(*args, **kwargs)
-    return decorated_function
-
 def customer_required(f):
     @wraps(f)
     def decorated_function(*args, **kwargs):
