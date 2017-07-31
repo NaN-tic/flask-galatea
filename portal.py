@@ -54,8 +54,8 @@ class User(UserMixin):
 
 class LoginForm(Form):
     "Login form"
-    email = TextField(_('Email'), [validators.Required(), validators.Email()])
-    password = PasswordField(_('Password'), [validators.Required()])
+    email = TextField(__('Email'), [validators.Required(), validators.Email()])
+    password = PasswordField(__('Password'), [validators.Required()])
 
     def __init__(self, *args, **kwargs):
         Form.__init__(self, *args, **kwargs)
@@ -330,7 +330,7 @@ def new_password(lang):
         '''
         user = None
         users = GalateaUser.search([
-            ('id', '=', session['user']),
+            ('id', '=', current_user.get_id()),
             ], limit=1)
         if users:
             user, = users
@@ -349,7 +349,6 @@ def new_password(lang):
     if form.validate_on_submit():
         password = request.form.get('password')
         confirm = request.form.get('confirm')
-
         if password == confirm and \
                 len(password) >= current_app.config.get('LEN_PASSWORD', 6):
             user = _save_password(password)
@@ -440,19 +439,11 @@ def activate(lang):
         return user list[dict]
         '''
         user = None
-        users = GalateaUser.search_read([
+        users = GalateaUser.search([
             ('email', '=', email),
             ('active', '=', True),
             ('activation_code', '=', act_code),
-            ], limit=1, fields_names=[
-                'display_name',
-                'email',
-                'password',
-                'salt',
-                'activation_code',
-                'party',
-                'email',
-                ])
+            ], limit=1)
         if users:
             user, = users
         return user
@@ -470,11 +461,7 @@ def activate(lang):
     if user and len(act_code) == 16:
         if request.method == 'POST':
             _reset_act_code(user) # reset activation code
-            session['logged_in'] = True
-            session['user'] = user['id']
-            session['customer'] = user['party']
-            session['email'] = user['email']
-            session['display_name'] = user['display_name']
+            login_user(user, remember=LOGIN_REMEMBER_ME)
             flash(_('Your account has been activated.'))
             slogin.send(current_app._get_current_object(),
                 user=user['id'],
@@ -490,9 +477,7 @@ def activate(lang):
 
     # active new password
     if user and len(act_code) == 12:
-        session['logged_in'] = True
-        session['user'] = user['id']
-        session['display_name'] = user['display_name']
+        login_user(user, remember=LOGIN_REMEMBER_ME)
         flash(_('You are logged in'))
         # Not signal login because cannot execute UPDATE in a read-only transaction
         return redirect(url_for('.new-password', lang=g.language))
