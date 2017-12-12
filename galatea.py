@@ -58,7 +58,7 @@ def uri(uri_str):
 def uri_aux(uri):
     if uri.type in ('internal_redirection', 'external_redirection'):
         target = (uri.internal_redirection.uri
-            if uri.type == 'internal_redirection' else uri.external_url)
+            if uri.type == 'internal_redirection' else uri.external_redirection)
         return redirect(target, code=uri.redirection_code)
 
     return render_template(uri.template.filename, uri=uri)
