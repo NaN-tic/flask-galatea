@@ -35,6 +35,7 @@ REDIRECT_AFTER_LOGIN = current_app.config.get('REDIRECT_AFTER_LOGIN')
 REDIRECT_AFTER_LOGOUT = current_app.config.get('REDIRECT_AFTER_LOGOUT')
 LOGIN_REMEMBER_ME = current_app.config.get('LOGIN_REMEMBER_ME', False)
 LOGIN_EXTRA_FIELDS = current_app.config.get('LOGIN_EXTRA_FIELDS', [])
+SEND_NEW_PASSWORD = current_app.config.get('SEND_NEW_PASSWORD', True)
 
 VAT_COUNTRIES = [('', '')]
 for country in sorted(vat.country_codes):
@@ -352,7 +353,7 @@ def new_password(lang):
         if password == confirm and \
                 len(password) >= current_app.config.get('LEN_PASSWORD', 6):
             user = _save_password(password)
-            if user:
+            if user and SEND_NEW_PASSWORD:
                 send_new_password(user)
             flash(_('The password has been saved.'))
         else:
