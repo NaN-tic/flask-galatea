@@ -251,7 +251,7 @@ def login(lang):
         :param password: string
         return Bool
         '''
-        activation_code = user['activation_code']
+        activation_code = user.activation_code
         if activation_code and len(activation_code) == 16:
             flash(_("Your account has not been activated yet!"))
             return False
@@ -265,7 +265,7 @@ def login(lang):
             digest = hashlib.sha1(password).hexdigest()
         else:
             digest = sha.new(password).hexdigest()
-        if digest != user['password']:
+        if digest != user.password:
             flash(_("The password is invalid"), "danger")
             return False
         return True
@@ -416,7 +416,7 @@ def reset_password(lang):
         send_reset_email(user)
 
         flash('%s: %s' % (
-            _('An email has been sent to reset your password.'),
+            _('An email has been sent to reset your password'),
             user['email']))
         form.reset()
 
