@@ -13,6 +13,7 @@ from .tryton import tryton
 from .signals import (login as slogin, failed_login as sfailed_login,
     logout as slogout, registration as sregistration)
 from .helpers import manager_required
+from trytond.transaction import Transaction
 
 import stdnum.eu.vat as vat
 import random
@@ -36,6 +37,7 @@ REDIRECT_AFTER_LOGOUT = current_app.config.get('REDIRECT_AFTER_LOGOUT')
 LOGIN_REMEMBER_ME = current_app.config.get('LOGIN_REMEMBER_ME', False)
 LOGIN_EXTRA_FIELDS = current_app.config.get('LOGIN_EXTRA_FIELDS', [])
 SEND_NEW_PASSWORD = current_app.config.get('SEND_NEW_PASSWORD', True)
+AUTOLOGIN_POSTREGISTRATION = current_app.config.get('AUTOLOGIN_POSTREGISTRATION')
 
 VAT_COUNTRIES = [('', '')]
 for country in sorted(vat.country_codes):
@@ -134,6 +136,111 @@ class RegistrationForm(Form):
         self.confirm.data = ''
         self.vat_number.data = ''
 
+    def save(self):
+        name = request.form.get('name')
+        email = request.form.get('email')
+        password = request.form.get('password')
+        confirm = request.form.get('confirm')
+        phone = request.form.get('phone')
+        vat_country = request.form.get('vat_country')
+        vat_number = request.form.get('vat_number')
+
+        if not (password == confirm and
+                len(password) >= current_app.config.get('LEN_PASSWORD', 6)):
+            flash(_("Password doesn't match or length not valid! "
+                    "Add new password again and save"), "danger")
+            self.reset()
+            return
+
+        user = _get_user(email, active=False)
+        if user:
+            flash(_('Email address already exists. Do you forget the '
+                    'password?'), 'danger')
+            return
+
+        eu_vat = False
+        vat_code = None
+        if vat_country and vat_number:
+            eu_vat = True
+            vat_code = '%s%s' % (vat_country.upper(), vat_number)
+            vat_code = vat.compact(vat_code)
+            if not vat.is_valid(vat_code):
+                flash(_('VAT number is not valid.'), 'danger')
+                return
+        elif vat_number:
+            vat_code = vat_number
+
+        if AUTOLOGIN_POSTREGISTRATION:
+            act_code = None
+        else:
+            act_code = create_act_code(code_type="new")
+
+        party = None
+        # search if email exist
+        contacts = ContactMechanism.search([
+            ('type', '=', 'email'),
+            ('value', '=', email),
+            ], limit=1)
+        if contacts:
+            contact, = contacts
+            party = contact.party
+        # search if vat exist
+        if eu_vat and vat_code:
+            parties = Party.search([
+                ('vat_code', '=', vat_code),
+                ], limit=1)
+            if parties:
+                if REGISTRATION_VAT_CHECK_CUSTOMER:
+                    flash(_('A customer exists with your VAT. Please, '
+                            'login or contact us to create a new user.'),
+                        'danger')
+                    return
+                party, = parties
+
+        if not party:
+            party_data = {
+                'name': name,
+                'addresses': [],
+                }
+            # identifiers
+            if vat_code:
+                if eu_vat:
+                    vat_party = {
+                        'type': 'eu_vat',
+                        'code': vat_code,
+                        }
+                else:
+                    vat_party = {
+                        'type': None, # not eu vat
+                        'code': vat_code,
+                        }
+                party_data['identifiers'] = [('create', [vat_party])]
+            # contact mechanisms
+            contact_datas = []
+            if email:
+                contact_datas.append({
+                    'type': 'email',
+                    'value': email,
+                    })
+            if phone:
+                contact_datas.append({
+                    'type': 'phone',
+                    'value': phone,
+                    })
+            party_data['contact_mechanisms'] = [('create', contact_datas)]
+            # save party
+            party, = Party.create([party_data])
+
+        user_data = {
+            'display_name': name,
+            'email': email,
+            'password': password,
+            'activation_code': act_code,
+            'company': Website(GALATEA_WEBSITE).company.id,
+            'party': party.id
+            }
+        user, = GalateaUser.create([user_data])
+        return {'user': user}
 
 class ActivateForm(Form):
     "Activate form"
@@ -203,7 +310,7 @@ def send_reset_email(user):
 def send_activation_email(user):
     """
     Send an new account email to the user
-    :param user: dict
+    :param user: GalateaUser object
     """
     mail = Mail(current_app)
 
@@ -212,7 +319,7 @@ def send_activation_email(user):
             body = render_template('emails/activation-text.jinja', user=user),
             html = render_template('emails/activation-html.jinja', user=user),
             sender = current_app.config.get('DEFAULT_MAIL_SENDER'),
-            recipients = [user['email']])
+            recipients = [user.email])
     mail.send(msg)
 
 def send_new_password(user):
@@ -229,6 +336,34 @@ def send_new_password(user):
             sender = current_app.config.get('DEFAULT_MAIL_SENDER'),
             recipients = [user['email']])
     mail.send(msg)
+
+def _get_user(email, active=True):
+    '''Get user
+    :param email: string
+    :param active: bool
+    return user or None
+    '''
+    user = None
+    fields = [
+        'party',
+        'display_name',
+        'email',
+        'password',
+        'salt',
+        'activation_code',
+        'manager',
+        ]
+    if LOGIN_EXTRA_FIELDS:
+        fields = fields+LOGIN_EXTRA_FIELDS
+    domain = [
+        ('email', '=', email),
+        ('websites', 'in', [GALATEA_WEBSITE]),
+        ]
+    with Transaction().set_context(active_test=active):
+        users = GalateaUser.search_read(domain, limit=1, fields_names=fields)
+        if users:
+            user, = users
+    return user
 
 @portal.route("/login", methods=["GET", "POST"], endpoint="login")
 @tryton.transaction()
@@ -293,7 +428,9 @@ def login(lang):
         data['email'] = email
         sfailed_login.send(form=form)
 
-    return render_template('login.html', form=form, data=data)
+    return render_template('login.html', form=form, data=data,
+        website=Website(GALATEA_WEBSITE))
+
 
 @portal.route('/logout', endpoint="logout")
 @login_required
@@ -370,26 +507,6 @@ def reset_password(lang):
     if not current_app.config.get('ACTIVE_LOGIN'):
         abort(404)
 
-    def _get_user(email):
-        '''Search user by email
-        :param email: string
-        return user list[dict]
-        '''
-        user = None
-        users = GalateaUser.search_read([
-            ('email', '=', email),
-            ('active', '=', True),
-            ], limit=1, fields_names=[
-                'display_name',
-                'email',
-                'password',
-                'salt',
-                'activation_code',
-                ])
-        if users:
-            user, = users
-        return user
-
     def _save_act_code(user, act_code):
         '''Write user activation code
         :param user: dict
@@ -434,38 +551,23 @@ def activate(lang):
         act_code = request.form.get('act_code')
         email = request.form.get('email')
 
-    def _get_user(email, act_code):
-        '''Search user by email
-        :param email: string
-        return user list[dict]
-        '''
-        user = None
-        users = GalateaUser.search([
-            ('email', '=', email),
-            ('active', '=', True),
-            ('activation_code', '=', act_code),
-            ], limit=1)
-        if users:
-            user, = users
-        return user
-
-    def _reset_act_code(user):
-        '''Add null activation code
-        :param user: dict
-        '''
-        user = GalateaUser(int(user['id']))
-        GalateaUser.write([user], {'activation_code': None})
-
-    user = _get_user(email, act_code)
+    users = GalateaUser.search([
+        ('email', '=', email),
+        ('active', '=', True),
+        ('activation_code', '=', act_code),
+        ], limit=1)
+    if users:
+        user, = users
 
     # active new user
     if user and len(act_code) == 16:
         if request.method == 'POST':
-            _reset_act_code(user) # reset activation code
+            user.activation_code = None
+            user.save()
             login_user(user, remember=LOGIN_REMEMBER_ME)
             flash(_('Your account has been activated.'))
             slogin.send(current_app._get_current_object(),
-                user=user['id'],
+                user=user.id,
                 session=session.sid,
                 website=current_app.config.get('TRYTON_GALATEA_SITE', None),
                 )
@@ -492,178 +594,41 @@ def registration(lang):
     if not current_app.config.get('ACTIVE_REGISTRATION'):
         abort(404)
 
-    def _get_user(email):
-        '''Search user by email
-        :param email: string
-        return user list[dict]
-        '''
-        fields = [
-            'party',
-            'display_name',
-            'email',
-            'password',
-            'salt',
-            'activation_code',
-            'manager',
-            ]
-        if LOGIN_EXTRA_FIELDS:
-            fields = fields + LOGIN_EXTRA_FIELDS
-        users = GalateaUser.search_read([
-            ('email', '=', email),
-            ('active', '=', True),
-            ('websites', 'in', [GALATEA_WEBSITE]),
-            ], limit=1, fields_names=fields)
-        return users
-
-    def _save_user(data):
-        '''Save user values
-        :param data: dict
-        '''
-        party = None
-
-        websites = Website.search([
-            ('id', '=', GALATEA_WEBSITE),
-            ], limit=1)
-        if not websites:
-            abort(404)
-        website, = websites
-
-        # search if email exist
-        contacts = ContactMechanism.search([
-            ('type', '=', 'email'),
-            ('value', '=', data.get('email')),
-            ], limit=1)
-        if contacts:
-            contact, = contacts
-            party = contact.party
-
-        eu_vat = data.get('eu_vat')
-        vat_code = data.get('vat_code')
-
-        # search if vat exist
-        if REGISTRATION_VAT and eu_vat and vat_code:
-            parties = Party.search([
-                ('vat_code', '=', vat_code),
-                ], limit=1)
-            if parties:
-                if REGISTRATION_VAT_CHECK_CUSTOMER:
-                    flash(_('Exist a customer with your VAT. Please, ' \
-                        'login or contact us to create a new user.'), "danger")
-                    return
-                party, = parties
-
-        if not party:
-            party_data = {
-                'name': data.get('display_name'),
-                'addresses': [],
-                }
-
-            # identifiers
-            if REGISTRATION_VAT:
-                if vat_code:
-                    if eu_vat:
-                        vat_party = {
-                            'type': 'eu_vat',
-                            'code': vat_code,
-                            }
-                    else:
-                        vat_party = {
-                            'type': None, # not eu vat
-                            'code': vat_code,
-                            }
-                    party_data['identifiers'] = [('create', [vat_party])]
-
-            # contact mechanisms
-            contact_datas = []
-            if data.get('email'):
-                contact_datas.append({
-                    'type': 'email',
-                    'value': data['email'],
-                    })
-            if data.get('phone'):
-                contact_datas.append({
-                    'type': 'phone',
-                    'value': data['phone'],
-                    })
-            party_data['contact_mechanisms'] = [('create', contact_datas)]
-
-            # save party
-            party, = Party.create([party_data])
-
-        del data['eu_vat']
-        del data['vat_code']
-        if 'phone' in data:
-            del data['phone']
-
-        data['company'] = website.company.id
-        data['party'] = party.id
-        user, = GalateaUser.create([data])
-        return user
+    website = Website(GALATEA_WEBSITE)
 
     form = current_app.extensions['Galatea'].registration_form()
+
+    if hasattr(form, 'country'):
+        if website.countries:
+            countries = [(c.id, c.name) for c in website.countries]
+        else:
+            countries = [(website.country.id, website.country.name)]
+        form.country.choices = countries
+
     if form.validate_on_submit():
-        name = request.form.get('name')
-        email = request.form.get('email')
-        password = request.form.get('password')
-        confirm = request.form.get('confirm')
-        phone = request.form.get('phone')
-        vat_country = request.form.get('vat_country')
-        vat_number = request.form.get('vat_number')
-
-        if not (password == confirm and \
-                len(password) >= current_app.config.get('LEN_PASSWORD', 6)):
-            flash(_("Password don't match or length not valid! " \
-                "Repeat add new password and save"), "danger")
-            form.reset()
-            return render_template('registration.html', form=form)
-
-        user = _get_user(email)
+        result = form.save()
+        user = result and result.get('user')
         if user:
-            flash(_('Email address already exists. Do you forget the password?'))
-            return render_template('registration.html', form=form)
-
-        eu_vat = False
-        vat_code = None
-        if REGISTRATION_VAT:
-            if vat_country:
-                eu_vat = True
-                vat_code = '%s%s' % (vat_country.upper(), vat_number)
-                vat_code = vat.compact(vat_code)
-                if not vat.is_valid(vat_code):
-                    flash(_('Vat number is not valid.'), 'danger')
-                    return render_template('registration.html', form=form)
-            elif vat_number:
-                vat_code = '%s' % vat_number
-
-        act_code = create_act_code(code_type="new")
-
-        # save new account - user
-        data = {
-            'display_name': name,
-            'email': email,
-            'phone': phone,
-            'password': password,
-            'activation_code': act_code,
-            'eu_vat': eu_vat,
-            'vat_code': vat_code,
-            }
-        user = _save_user(data)
-        if user:
-            # send email activation account
-            send_activation_email(data)
-            sregistration.send(
-                current_app._get_current_object(),
-                user=user,
-                data=request.form,
-                website=current_app.config.get('TRYTON_GALATEA_SITE', None),
-                )
-            flash('%s: %s' % (
-                _('An email has been sent to activate your account'),
-                email))
-            form.reset()
+            if AUTOLOGIN_POSTREGISTRATION:
+                flash(_('You have a new account and you are logged in'))
+                login_user(user, remember=LOGIN_REMEMBER_ME)
+                return redirect(url_for('.login', lang=g.language))
+            else:
+                # send email activation account
+                send_activation_email(user)
+                sregistration.send(
+                    current_app._get_current_object(),
+                    user=user,
+                    data=request.form,
+                    website=current_app.config.get('TRYTON_GALATEA_SITE', None),
+                    )
+                flash('%s: %s' % (
+                    _('An email has been sent to activate your account'),
+                    user.email))
+                form.reset()
 
     form.vat_country.data = DEFAULT_COUNTRY.upper() or ''
-    return render_template('registration.html', form=form)
+    return render_template('registration.html', form=form, website=website)
 
 @portal.route('/subdivisions', methods=['GET'], endpoint="subdivisions")
 @tryton.transaction()
