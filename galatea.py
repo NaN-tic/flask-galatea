@@ -8,7 +8,6 @@ GALATEA_WEBSITE = current_app.config.get('TRYTON_GALATEA_SITE')
 
 galatea = Blueprint('galatea', __name__, template_folder='templates')
 
-Article = tryton.pool.get('galatea.cms.article')
 Uri = tryton.pool.get('galatea.uri')
 
 @galatea.route("/<path:uri_str>", endpoint="uri")
