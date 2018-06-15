@@ -187,7 +187,7 @@ class RegistrationForm(Form):
         # search if vat exist
         if eu_vat and vat_code:
             parties = Party.search([
-                ('vat_code', '=', vat_code),
+                ('tax_identifier', '=', vat_code),
                 ], limit=1)
             if parties:
                 if REGISTRATION_VAT_CHECK_CUSTOMER:
