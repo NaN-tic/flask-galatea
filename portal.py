@@ -48,6 +48,7 @@ Website = tryton.pool.get('galatea.website')
 Party = tryton.pool.get('party.party')
 ContactMechanism = tryton.pool.get('party.contact_mechanism')
 Subdivision = tryton.pool.get('country.subdivision')
+Lang = tryton.pool.get('ir.lang')
 
 
 class User(UserMixin):
@@ -121,6 +122,7 @@ class RegistrationForm(Form):
     vat_country = SelectField(__('VAT Country'), choices=VAT_COUNTRIES)
     vat_number = TextField(__('VAT Number'), vat_required)
     code = TextField(__('Code'))
+    language = SelectField(__('Language'))
 
     def __init__(self, *args, **kwargs):
         Form.__init__(self, *args, **kwargs)
@@ -144,6 +146,7 @@ class RegistrationForm(Form):
         phone = request.form.get('phone')
         vat_country = request.form.get('vat_country')
         vat_number = request.form.get('vat_number')
+        language = request.form.get('language')
 
         if not (password == confirm and
                 len(password) >= current_app.config.get('LEN_PASSWORD', 6)):
@@ -202,6 +205,9 @@ class RegistrationForm(Form):
                 'name': name,
                 'addresses': [],
                 }
+            lang = Lang.search([('code', '=', language)])
+            if lang:
+                party_data['lang'] = lang[0].id
             # identifiers
             if vat_code:
                 if eu_vat:
@@ -597,6 +603,7 @@ def registration(lang):
     website = Website(GALATEA_WEBSITE)
 
     form = current_app.extensions['Galatea'].registration_form()
+    form.language.choices = [(l.code, l.name) for l in website.languages]
 
     if hasattr(form, 'country'):
         if website.countries:
