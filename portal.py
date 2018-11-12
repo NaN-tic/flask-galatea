@@ -604,6 +604,7 @@ def registration(lang):
         else:
             countries = [(website.country.id, website.country.name)]
         form.country.choices = countries
+        form.country.data = website.country.id
 
     if form.validate_on_submit():
         result = form.save()
