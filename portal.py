@@ -564,33 +564,37 @@ def activate(lang):
         ], limit=1)
     if users:
         user, = users
+        if user:
+            # active new user
+            if len(act_code) == 16:
+                if request.method == 'POST':
+                    user.activation_code = None
+                    user.save()
+                    login_user(user, remember=LOGIN_REMEMBER_ME)
+                    flash(_('Your account has been activated.'))
+                    slogin.send(current_app._get_current_object(),
+                        user=user.id,
+                        session=session.sid,
+                        website=current_app.config.get('TRYTON_GALATEA_SITE',
+                            None),
+                        )
+                else:
+                    data = {
+                        'act_code': act_code,
+                        'email': email,
+                        }
+                    return render_template('activate.html', form=form,
+                        data=data)
 
-    # active new user
-    if user and len(act_code) == 16:
-        if request.method == 'POST':
-            user.activation_code = None
-            user.save()
-            login_user(user, remember=LOGIN_REMEMBER_ME)
-            flash(_('Your account has been activated.'))
-            slogin.send(current_app._get_current_object(),
-                user=user.id,
-                session=session.sid,
-                website=current_app.config.get('TRYTON_GALATEA_SITE', None),
-                )
-        else:
-            data = {
-                'act_code': act_code,
-                'email': email,
-                }
-            return render_template('activate.html', form=form, data=data)
+            # active new password
+            if len(act_code) == 12:
+                login_user(user, remember=LOGIN_REMEMBER_ME)
+                flash(_('You are logged in'))
+                # Not signal login because cannot execute UPDATE in a read-only
+                # transaction
+                return redirect(url_for('.new-password', lang=g.language))
 
-    # active new password
-    if user and len(act_code) == 12:
-        login_user(user, remember=LOGIN_REMEMBER_ME)
-        flash(_('You are logged in'))
-        # Not signal login because cannot execute UPDATE in a read-only transaction
-        return redirect(url_for('.new-password', lang=g.language))
-
+    flash(_('Activation code is not valid.'))
     return redirect('/%s/' % g.language)
 
 @portal.route('/registration', methods=["GET", "POST"], endpoint="registration")
