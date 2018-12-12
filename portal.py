@@ -40,7 +40,7 @@ SEND_NEW_PASSWORD = current_app.config.get('SEND_NEW_PASSWORD', True)
 AUTOLOGIN_POSTREGISTRATION = current_app.config.get('AUTOLOGIN_POSTREGISTRATION')
 
 VAT_COUNTRIES = [('', '')]
-for country in sorted(vat.country_codes):
+for country in sorted(vat._country_codes):
     VAT_COUNTRIES.append((country, country.upper()))
 
 GalateaUser = tryton.pool.get('galatea.user')
