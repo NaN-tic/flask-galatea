@@ -417,9 +417,12 @@ def login(lang):
             login = _validate_user(user, password)
             if login:
                 login_user(user, remember=LOGIN_REMEMBER_ME)
-
-                if REDIRECT_AFTER_LOGIN:
-                    return redirect(url_for(REDIRECT_AFTER_LOGIN, lang=g.language))
+                if (current_app.config.get('USE_SESSION_FOR_NEXT')
+                        and session.get('next')):
+                    return redirect(session['next'])
+                elif REDIRECT_AFTER_LOGIN:
+                    return redirect(
+                        url_for(REDIRECT_AFTER_LOGIN, lang=g.language))
                 else:
                     return redirect(url_for(g.language))
         else:

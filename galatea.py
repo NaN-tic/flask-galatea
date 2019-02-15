@@ -22,37 +22,39 @@ def uri(uri_str):
             ('active', '=', True),
             ('website', '=', GALATEA_WEBSITE),
             ('anchor', '=', False),
-            ])
-        if not uris:
-            parts = uri_str.strip().strip('/').split('/')
-            key = parts[-1]
-            uris = Uri.search([
-                    ('slug', '=', key),
-                    ('active', '=', True),
-                    ('website', '=', GALATEA_WEBSITE),
-                    ('anchor', '=', False),
-                    ('sitemap', '=', True),
-                    ])
+            ], limit=1)
+        if uris:
+            uri, = uris
+            return uri_aux(uri)
+
+        parts = uri_str.strip().strip('/').split('/')
+        key = parts[-1]
+        uris = Uri.search([
+                ('slug', '=', key),
+                ('active', '=', True),
+                ('website', '=', GALATEA_WEBSITE),
+                ('anchor', '=', False),
+                ('sitemap', '=', True),
+                ], limit=1)
+        if uris:
+            uri, = uris
+            return uri_aux(uri)
+
+        for lang in current_app.config.get('ACCEPT_LANGUAGES').keys():
+            with Transaction().set_context(language=lang):
+                uris = Uri.search([
+                        ('slug', '=', key),
+                        ('active', '=', True),
+                        ('website', '=', GALATEA_WEBSITE),
+                        ('anchor', '=', False),
+                        ('sitemap', '=', True),
+                        ], limit=1)
             if uris:
-                return redirect(uris[0].uri, code=301)
+                uri, = uris
+                return uri_aux(uri)
 
-            for lang in current_app.config.get('ACCEPT_LANGUAGES').keys():
-                with Transaction().set_context(language=lang):
-                    uris = Uri.search([
-                            ('slug', '=', key),
-                            ('active', '=', True),
-                            ('website', '=', GALATEA_WEBSITE),
-                            ('anchor', '=', False),
-                            ('sitemap', '=', True),
-                            ])
-                if uris:
-                    return redirect(uris[0].uri, code=301)
-
-            if not uris:
-                abort(404)
-
-    return uri_aux(uris[0])
-
+        if not uris:
+            abort(404)
 
 def uri_aux(uri):
     if uri.type in ('internal_redirection', 'external_redirection'):
