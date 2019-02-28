@@ -138,7 +138,7 @@ class RegistrationForm(Form):
         self.confirm.data = ''
         self.vat_number.data = ''
 
-    def save(self):
+    def save(self, send_act_code=True):
         name = request.form.get('name')
         email = request.form.get('email')
         password = request.form.get('password')
@@ -173,7 +173,7 @@ class RegistrationForm(Form):
         elif vat_number:
             vat_code = vat_number
 
-        if AUTOLOGIN_POSTREGISTRATION:
+        if AUTOLOGIN_POSTREGISTRATION or not send_act_code:
             act_code = None
         else:
             act_code = create_act_code(code_type="new")
@@ -205,9 +205,10 @@ class RegistrationForm(Form):
                 'name': name,
                 'addresses': [],
                 }
-            lang = Lang.search([('code', '=', language)])
-            if lang:
-                party_data['lang'] = lang[0].id
+            if language:
+                lang = Lang.search([('code', '=', language)], limit=1)
+                if lang:
+                    party_data['lang'] = lang[0].id
             # identifiers
             if vat_code:
                 if eu_vat:
@@ -248,6 +249,7 @@ class RegistrationForm(Form):
         user, = GalateaUser.create([user_data])
         return {'user': user}
 
+
 class ActivateForm(Form):
     "Activate form"
     act_code = HiddenField(__('Activation Code'), [validators.Required()])
@@ -284,6 +286,7 @@ class Galatea(object):
         if not hasattr(app, 'extensions'):
             app.extensions = {}
         app.extensions['Galatea'] = self
+
 
 def create_act_code(code_type="new"):
     """Create activation code
@@ -610,7 +613,12 @@ def registration(lang):
     website = Website(GALATEA_WEBSITE)
 
     form = current_app.extensions['Galatea'].registration_form()
-    form.language.choices = [(l.code, l.name) for l in website.languages]
+
+    form.language.data = g.language
+    if website.languages:
+        form.language.choices = [(l.code, l.name) for l in website.languages]
+    else:
+        form.language.choices = [(g.language, g.language)]
 
     if hasattr(form, 'country'):
         if website.countries:
@@ -624,6 +632,13 @@ def registration(lang):
         result = form.save()
         user = result and result.get('user')
         if user:
+            # signal registration
+            sregistration.send(
+                current_app._get_current_object(),
+                user=user,
+                data=request.form,
+                website=current_app.config.get('TRYTON_GALATEA_SITE', None),
+                )
             if AUTOLOGIN_POSTREGISTRATION:
                 flash(_('You have a new account and you are logged in'))
                 login_user(user, remember=LOGIN_REMEMBER_ME)
@@ -631,12 +646,6 @@ def registration(lang):
             else:
                 # send email activation account
                 send_activation_email(user)
-                sregistration.send(
-                    current_app._get_current_object(),
-                    user=user,
-                    data=request.form,
-                    website=current_app.config.get('TRYTON_GALATEA_SITE', None),
-                    )
                 flash('%s: %s' % (
                     _('An email has been sent to activate your account'),
                     user.email))
