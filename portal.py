@@ -14,6 +14,7 @@ from .signals import (login as slogin, failed_login as sfailed_login,
     logout as slogout, registration as sregistration)
 from .helpers import manager_required
 from trytond.transaction import Transaction
+from trytond.modules.galatea.tools import remove_special_chars
 
 import stdnum.eu.vat as vat
 import random
@@ -138,7 +139,7 @@ class RegistrationForm(Form):
         self.confirm.data = ''
         self.vat_number.data = ''
 
-    def save(self, send_act_code=True):
+    def save(self):
         name = request.form.get('name')
         email = request.form.get('email')
         password = request.form.get('password')
@@ -173,7 +174,7 @@ class RegistrationForm(Form):
         elif vat_number:
             vat_code = vat_number
 
-        if AUTOLOGIN_POSTREGISTRATION or not send_act_code:
+        if AUTOLOGIN_POSTREGISTRATION:
             act_code = None
         else:
             act_code = create_act_code(code_type="new")
@@ -205,10 +206,9 @@ class RegistrationForm(Form):
                 'name': name,
                 'addresses': [],
                 }
-            if language:
-                lang = Lang.search([('code', '=', language)], limit=1)
-                if lang:
-                    party_data['lang'] = lang[0].id
+            lang = Lang.search([('code', '=', language)])
+            if lang:
+                party_data['lang'] = lang[0].id
             # identifiers
             if vat_code:
                 if eu_vat:
@@ -249,7 +249,6 @@ class RegistrationForm(Form):
         user, = GalateaUser.create([user_data])
         return {'user': user}
 
-
 class ActivateForm(Form):
     "Activate form"
     act_code = HiddenField(__('Activation Code'), [validators.Required()])
@@ -286,7 +285,6 @@ class Galatea(object):
         if not hasattr(app, 'extensions'):
             app.extensions = {}
         app.extensions['Galatea'] = self
-
 
 def create_act_code(code_type="new"):
     """Create activation code
@@ -416,29 +414,37 @@ def login(lang):
 
     form = current_app.extensions['Galatea'].login_form()
 
-    if form.validate_on_submit():
-        email = request.form.get('email')
-        password = request.form.get('password')
+    if request.method == 'POST':
+        if form.email.data:
+            form.email.data = remove_special_chars(form.email.data)
 
-        users = GalateaUser.get_user(GALATEA_WEBSITE, request)
-        if users:
-            user, = users
-            login = _validate_user(user, password)
-            if login:
-                login_user(user, remember=LOGIN_REMEMBER_ME)
-                if (current_app.config.get('USE_SESSION_FOR_NEXT')
-                        and session.get('next')):
-                    return redirect(session['next'])
-                elif REDIRECT_AFTER_LOGIN:
-                    return redirect(
-                        url_for(REDIRECT_AFTER_LOGIN, lang=g.language))
-                else:
-                    return redirect(url_for(g.language))
+        if form.validate_on_submit():
+            email = form.email.data
+            password = form.password.data
+
+            users = GalateaUser.get_user(GALATEA_WEBSITE, request)
+            if users:
+                user, = users
+                login = _validate_user(user, password)
+                if login:
+                    login_user(user, remember=LOGIN_REMEMBER_ME)
+                    if (current_app.config.get('USE_SESSION_FOR_NEXT')
+                            and session.get('next')):
+                        return redirect(session['next'])
+                    elif REDIRECT_AFTER_LOGIN:
+                        return redirect(
+                            url_for(REDIRECT_AFTER_LOGIN, lang=g.language))
+                    else:
+                        return redirect(url_for(g.language))
+            else:
+                flash(current_app.extensions['Galatea'].login_error, 'danger')
+
+            data['email'] = email
+            sfailed_login.send(form=form)
         else:
-            flash(current_app.extensions['Galatea'].login_error, 'danger')
-
-        data['email'] = email
-        sfailed_login.send(form=form)
+            error_messages = ", ".join(
+                [m for em in form.errors.values() for m in em])
+            flash(error_messages, 'danger')
 
     return render_template('login.html', form=form, data=data,
         website=Website(GALATEA_WEBSITE))
@@ -613,12 +619,7 @@ def registration(lang):
     website = Website(GALATEA_WEBSITE)
 
     form = current_app.extensions['Galatea'].registration_form()
-
-    form.language.data = g.language
-    if website.languages:
-        form.language.choices = [(l.code, l.name) for l in website.languages]
-    else:
-        form.language.choices = [(g.language, g.language)]
+    form.language.choices = [(l.code, l.name) for l in website.languages]
 
     if hasattr(form, 'country'):
         if website.countries:
@@ -632,13 +633,6 @@ def registration(lang):
         result = form.save()
         user = result and result.get('user')
         if user:
-            # signal registration
-            sregistration.send(
-                current_app._get_current_object(),
-                user=user,
-                data=request.form,
-                website=current_app.config.get('TRYTON_GALATEA_SITE', None),
-                )
             if AUTOLOGIN_POSTREGISTRATION:
                 flash(_('You have a new account and you are logged in'))
                 login_user(user, remember=LOGIN_REMEMBER_ME)
@@ -646,6 +640,12 @@ def registration(lang):
             else:
                 # send email activation account
                 send_activation_email(user)
+                sregistration.send(
+                    current_app._get_current_object(),
+                    user=user,
+                    data=request.form,
+                    website=current_app.config.get('TRYTON_GALATEA_SITE', None),
+                    )
                 flash('%s: %s' % (
                     _('An email has been sent to activate your account'),
                     user.email))
