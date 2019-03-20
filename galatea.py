@@ -1,6 +1,6 @@
 # The COPYRIGHT file at the top level of this repository contains the full
 # copyright notices and license terms.
-from flask import Blueprint, render_template, current_app, redirect, abort
+from flask import Blueprint, render_template, current_app, redirect, abort, session
 from trytond.transaction import Transaction
 from .tryton import tryton
 
@@ -61,5 +61,7 @@ def uri_aux(uri):
         target = (uri.internal_redirection.uri
             if uri.type == 'internal_redirection' else uri.external_redirection)
         return redirect(target, code=uri.redirection_code)
-
+    elif uri.type == 'content' and not uri.content:
+        abort(404)
+    session['next'] = uri.uri
     return render_template(uri.template.filename, uri=uri)
