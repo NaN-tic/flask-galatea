@@ -48,6 +48,7 @@ GalateaUser = tryton.pool.get('galatea.user')
 Website = tryton.pool.get('galatea.website')
 Party = tryton.pool.get('party.party')
 ContactMechanism = tryton.pool.get('party.contact_mechanism')
+PartyIdentifier = tryton.pool.get('party.identifier')
 Subdivision = tryton.pool.get('country.subdivision')
 Lang = tryton.pool.get('ir.lang')
 
@@ -202,41 +203,38 @@ class RegistrationForm(Form):
                 party, = parties
 
         if not party:
-            party_data = {
-                'name': name,
-                'addresses': [],
-                }
-            lang = Lang.search([('code', '=', language)])
-            if lang:
-                party_data['lang'] = lang[0].id
+            lang, = Lang.search([('code', '=', language)], limit=1)
+
+            default_values = Party.default_get(Party._fields.keys(),
+                with_rec_name=False)
+
+            party = Party()
+            for key in default_values:
+                setattr(party, key, default_values[key])
+            party.name = name
+            party.addresses = []
+            party.lang = lang
+
             # identifiers
             if vat_code:
-                if eu_vat:
-                    vat_party = {
-                        'type': 'eu_vat',
-                        'code': vat_code,
-                        }
-                else:
-                    vat_party = {
-                        'type': None, # not eu vat
-                        'code': vat_code,
-                        }
-                party_data['identifiers'] = [('create', [vat_party])]
+                identifier = PartyIdentifier()
+                identifier.code = vat_code
+                identifier.type = 'eu_vat' if eu_vat else None
+                party.identifiers = [identifier]
+
             # contact mechanisms
             contact_datas = []
             if email:
-                contact_datas.append({
-                    'type': 'email',
-                    'value': email,
-                    })
+                contact_datas.append(
+                    ContactMechanism(type='email', value=email))
             if phone:
-                contact_datas.append({
-                    'type': 'phone',
-                    'value': phone,
-                    })
-            party_data['contact_mechanisms'] = [('create', contact_datas)]
+                contact_datas.append(
+                    ContactMechanism(type='phone', value=phone))
+            if contact_datas:
+                party.contact_mechanisms = contact_datas
+
             # save party
-            party, = Party.create([party_data])
+            party, = Party.create([party._save_values])
 
         user_data = {
             'display_name': name,
