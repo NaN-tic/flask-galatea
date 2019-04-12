@@ -7,6 +7,17 @@ from slug import slug
 from PIL import Image
 import os
 
+def get_tryton_language(lang):
+    '''
+    Convert language to tryton languages
+    Example: ca -> ca_ES
+    '''
+    languages = current_app.config.get('ACCEPT_LANGUAGES')
+    for k, v in languages.iteritems():
+        l = k.split('_')[0]
+        if l == lang:
+            return k
+
 def get_tryton_locale(lang):
     '''
     Get locale options from lang
