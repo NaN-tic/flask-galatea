@@ -1,10 +1,14 @@
 #This file is part galatea blueprint for Flask.
-#The COPYRIGHT file at the top level of this repository contains 
+#The COPYRIGHT file at the top level of this repository contains
 #the full copyright notices and license terms.
 from flask import request
 from flask.sessions import SessionInterface, SessionMixin
-from werkzeug.contrib.sessions import Session as SessionBase, SessionStore
+from secure_cookie.sessions import Session as SessionBase, SessionStore
 from flask.globals import current_app
+
+# Deprecated session from werkzeug
+# https://werkzeug.palletsprojects.com/en/0.15.x/contrib/sessions/
+# https://github.com/pallets/secure-cookie
 
 
 class Session(SessionBase, SessionMixin):

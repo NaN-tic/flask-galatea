@@ -60,8 +60,8 @@ class User(UserMixin):
 
 class LoginForm(Form):
     "Login form"
-    email = TextField(__('Email'), [validators.Required(), validators.Email()])
-    password = PasswordField(__('Password'), [validators.Required()])
+    email = TextField(__('Email'), [validators.InputRequired(), validators.Email()])
+    password = PasswordField(__('Password'), [validators.InputRequired()])
 
     def __init__(self, *args, **kwargs):
         Form.__init__(self, *args, **kwargs)
@@ -75,9 +75,9 @@ class LoginForm(Form):
 
 class NewPasswordForm(Form):
     "New Password form"
-    password = PasswordField(__('Password'), [validators.Required(),
+    password = PasswordField(__('Password'), [validators.InputRequired(),
         validators.EqualTo('confirm', message=_('Passwords must match'))])
-    confirm = PasswordField(__('Confirm'), [validators.Required()])
+    confirm = PasswordField(__('Confirm'), [validators.InputRequired()])
 
     def __init__(self, *args, **kwargs):
         Form.__init__(self, *args, **kwargs)
@@ -95,7 +95,7 @@ class NewPasswordForm(Form):
 
 class ResetPasswordForm(Form):
     "Reset Password form"
-    email = TextField(_('Email'), [validators.Required(), validators.Email()])
+    email = TextField(_('Email'), [validators.InputRequired(), validators.Email()])
 
     def __init__(self, *args, **kwargs):
         Form.__init__(self, *args, **kwargs)
@@ -114,11 +114,11 @@ class RegistrationForm(Form):
     "Registration form"
     vat_required = None
     if REGISTRATION_VAT:
-        vat_required = [validators.Required()]
+        vat_required = [validators.InputRequired()]
 
-    name = TextField(__('Name'), [validators.Required()])
-    email = TextField(__('Email'), [validators.Required(), validators.Email()])
-    password = PasswordField(__('Password'), [validators.Required()])
+    name = TextField(__('Name'), [validators.InputRequired()])
+    email = TextField(__('Email'), [validators.InputRequired(), validators.Email()])
+    password = PasswordField(__('Password'), [validators.InputRequired()])
     confirm = PasswordField(__('Confirm'))
     phone = TextField(__('Phone'))
     vat_country = SelectField(__('VAT Country'), choices=VAT_COUNTRIES)
@@ -249,8 +249,8 @@ class RegistrationForm(Form):
 
 class ActivateForm(Form):
     "Activate form"
-    act_code = HiddenField(__('Activation Code'), [validators.Required()])
-    email = HiddenField(__('Email'), [validators.Required(), validators.Email()])
+    act_code = HiddenField(__('Activation Code'), [validators.InputRequired()])
+    email = HiddenField(__('Email'), [validators.InputRequired(), validators.Email()])
 
     def __init__(self, *args, **kwargs):
         Form.__init__(self, *args, **kwargs)
@@ -293,7 +293,7 @@ def create_act_code(code_type="new"):
     """
     assert code_type in ("new", "reset")
     length = 16 if code_type == "new" else 12
-    act_code = ''.join(random.sample(string.letters + string.digits, length))
+    act_code = ''.join(random.sample(string.ascii_letters + string.digits, length))
 
     return act_code
 
@@ -396,8 +396,8 @@ def login(lang):
             flash(_("Your account has not been activated yet!"))
             return False
 
-        if isinstance(password, unicode):
-            password = password.encode('utf-8')
+        # if isinstance(password, unicode):
+        password = password.encode('utf-8')
         salt = user.salt.encode('utf-8') if user.salt else ''
         if salt:
             password += salt
@@ -588,6 +588,10 @@ def activate(lang):
                         website=current_app.config.get('TRYTON_GALATEA_SITE',
                             None),
                         )
+                    if REDIRECT_AFTER_LOGIN:
+                        return redirect(url_for(REDIRECT_AFTER_LOGIN, lang=g.language))
+                    else:
+                        return redirect(url_for(g.language))
                 else:
                     data = {
                         'act_code': act_code,
@@ -627,27 +631,32 @@ def registration(lang):
         form.country.choices = countries
         form.country.data = website.country.id
 
-    if form.validate_on_submit():
-        result = form.save()
-        user = result and result.get('user')
-        if user:
-            if AUTOLOGIN_POSTREGISTRATION:
-                flash(_('You have a new account and you are logged in'))
-                login_user(user, remember=LOGIN_REMEMBER_ME)
-                return redirect(url_for('.login', lang=g.language))
-            else:
-                # send email activation account
-                send_activation_email(user)
-                sregistration.send(
-                    current_app._get_current_object(),
-                    user=user,
-                    data=request.form,
-                    website=current_app.config.get('TRYTON_GALATEA_SITE', None),
-                    )
-                flash('%s: %s' % (
-                    _('An email has been sent to activate your account'),
-                    user.email))
-                form.reset()
+    if request.method == 'POST':
+        if form.validate_on_submit():
+            result = form.save()
+            user = result and result.get('user')
+            if user:
+                if AUTOLOGIN_POSTREGISTRATION:
+                    flash(_('You have a new account and you are logged in'))
+                    login_user(user, remember=LOGIN_REMEMBER_ME)
+                    return redirect(url_for('.login', lang=g.language))
+                else:
+                    # send email activation account
+                    send_activation_email(user)
+                    sregistration.send(
+                        current_app._get_current_object(),
+                        user=user,
+                        data=request.form,
+                        website=current_app.config.get('TRYTON_GALATEA_SITE', None),
+                        )
+                    flash('%s: %s' % (
+                        _('An email has been sent to activate your account'),
+                        user.email))
+                    form.reset()
+        else:
+            error_messages = ", ".join(
+                [m for em in form.errors.values() for m in em])
+            flash(error_messages, 'danger')
 
     form.vat_country.data = DEFAULT_COUNTRY.upper() or ''
     return render_template('registration.html', form=form, website=website)
