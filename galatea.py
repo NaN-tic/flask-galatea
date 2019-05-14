@@ -26,35 +26,7 @@ def uri(uri_str):
         if uris:
             uri, = uris
             return uri_aux(uri)
-
-        parts = uri_str.strip().strip('/').split('/')
-        key = parts[-1]
-        uris = Uri.search([
-                ('slug', '=', key),
-                ('active', '=', True),
-                ('website', '=', GALATEA_WEBSITE),
-                ('anchor', '=', False),
-                ('sitemap', '=', True),
-                ], limit=1)
-        if uris:
-            uri, = uris
-            return uri_aux(uri)
-
-        for lang in current_app.config.get('ACCEPT_LANGUAGES').keys():
-            with Transaction().set_context(language=lang):
-                uris = Uri.search([
-                        ('slug', '=', key),
-                        ('active', '=', True),
-                        ('website', '=', GALATEA_WEBSITE),
-                        ('anchor', '=', False),
-                        ('sitemap', '=', True),
-                        ], limit=1)
-            if uris:
-                uri, = uris
-                return uri_aux(uri)
-
-        if not uris:
-            abort(404)
+        abort(404)
 
 def uri_aux(uri):
     if uri.type in ('internal_redirection', 'external_redirection'):
