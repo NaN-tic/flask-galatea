@@ -656,7 +656,7 @@ def registration(lang):
 @tryton.transaction()
 def subdivisions(lang):
     '''Return all subdivisions by country (Json)'''
-    country = int(request.args.get('country', 0))
+    country = int(request.args.get('country') or 0)
     subdivisions = Subdivision.search([('country', '=', country)])
 
     return jsonify(
