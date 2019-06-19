@@ -39,6 +39,7 @@ LOGIN_REMEMBER_ME = current_app.config.get('LOGIN_REMEMBER_ME', False)
 LOGIN_EXTRA_FIELDS = current_app.config.get('LOGIN_EXTRA_FIELDS', [])
 SEND_NEW_PASSWORD = current_app.config.get('SEND_NEW_PASSWORD', True)
 AUTOLOGIN_POSTREGISTRATION = current_app.config.get('AUTOLOGIN_POSTREGISTRATION')
+REGISTRATION_MANUAL = current_app.config.get('REGISTRATION_MANUAL')
 
 VAT_COUNTRIES = [('', '')]
 for country in sorted(vat._country_codes):
@@ -640,6 +641,15 @@ def registration(lang):
                     flash(_('You have a new account and you are logged in'))
                     login_user(user, remember=LOGIN_REMEMBER_ME)
                     return redirect(url_for('.login', lang=g.language))
+                elif REGISTRATION_MANUAL:
+                    sregistration.send(
+                        current_app._get_current_object(),
+                        user=user,
+                        data=request.form,
+                        website=current_app.config.get('TRYTON_GALATEA_SITE', None),
+                        )
+                    flash(_('Your account is pending to validate'))
+                    form.reset()
                 else:
                     # send email activation account
                     send_activation_email(user)
