@@ -7,6 +7,7 @@ from flask_babel import gettext as _, lazy_gettext as __
 from flask_mail import Mail, Message
 from flask_wtf import FlaskForm as Form
 from wtforms import TextField, PasswordField, SelectField, HiddenField, validators
+from wtforms.fields.html5 import EmailField
 from flask_login import (UserMixin, login_user, logout_user, login_required,
     current_user)
 from .tryton import tryton
@@ -61,7 +62,7 @@ class User(UserMixin):
 
 class LoginForm(Form):
     "Login form"
-    email = TextField(__('Email'), [validators.InputRequired(), validators.Email()])
+    email = EmailField(__('Email'), [validators.InputRequired(), validators.Email()])
     password = PasswordField(__('Password'), [validators.InputRequired()])
 
     def __init__(self, *args, **kwargs):
