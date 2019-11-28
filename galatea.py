@@ -32,7 +32,7 @@ def uri_aux(uri):
     if uri.type in ('internal_redirection', 'external_redirection'):
         target = (uri.internal_redirection.uri
             if uri.type == 'internal_redirection' else uri.external_redirection)
-        return redirect(target, code=uri.redirection_code)
+        return redirect(target, code=int(uri.redirection_code))
     elif uri.type == 'content' and not uri.content:
         abort(404)
     session['next'] = uri.uri
