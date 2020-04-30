@@ -55,6 +55,16 @@ Subdivision = tryton.pool.get('country.subdivision')
 Lang = tryton.pool.get('ir.lang')
 
 
+def _get_vat_code(vat_country, vat_number):
+    eu_vat = False
+    if vat_country and vat_number:
+        eu_vat = True
+        vat_code = '%s%s' % (vat_country.upper(), vat_number)
+        vat_code = vat.compact(vat_code)
+    elif vat_number:
+        vat_code = vat_number
+    return vat_code, eu_vat
+
 class User(UserMixin):
     "Login User Mixin"
     pass
@@ -132,6 +142,11 @@ class RegistrationForm(Form):
         Form.__init__(self, *args, **kwargs)
 
     def validate(self):
+        # remove select fields to validate without choices and not required
+        for field in self._fields.copy():
+            if getattr(self, field).type == 'SelectField':
+                if not getattr(self, field).choices and not getattr(self, field).flags.required:
+                    delattr(self, field)
         rv = Form.validate(self)
         if not rv:
             return False
@@ -142,7 +157,7 @@ class RegistrationForm(Form):
         self.confirm.data = ''
         self.vat_number.data = ''
 
-    def save(self):
+    def save(self, send_act_code=True):
         name = request.form.get('name')
         email = request.form.get('email')
         password = request.form.get('password')
@@ -150,7 +165,7 @@ class RegistrationForm(Form):
         phone = request.form.get('phone')
         vat_country = request.form.get('vat_country')
         vat_number = request.form.get('vat_number')
-        language = request.form.get('language')
+        language = request.form.get('language') or g.language
 
         if not (password == confirm and
                 len(password) >= current_app.config.get('LEN_PASSWORD', 6)):
@@ -177,7 +192,7 @@ class RegistrationForm(Form):
         elif vat_number:
             vat_code = vat_number
 
-        if AUTOLOGIN_POSTREGISTRATION:
+        if AUTOLOGIN_POSTREGISTRATION or not send_act_code:
             act_code = None
         else:
             act_code = create_act_code(code_type="new")
@@ -248,6 +263,40 @@ class RegistrationForm(Form):
             }
         user, = GalateaUser.create([user_data])
         return {'user': user}
+
+    def check(self):
+        password = request.form.get('password')
+        confirm = request.form.get('confirm')
+        email = request.form.get('email')
+        vat_country = request.form.get('vat_country')
+        vat_number = request.form.get('vat_number')
+
+        if not (password == confirm and
+                len(password) >= current_app.config.get('LEN_PASSWORD', 6)):
+            flash(_("Password doesn't match or length not valid! "
+                    "Add new password again and save"), "danger")
+            self.reset()
+            return False
+        if _get_user(email, active=False):
+            flash(_('Email address already exists. Do you forget the '
+                    'password?'), 'danger')
+            return False
+
+        vat_code, eu_vat = _get_vat_code(vat_country, vat_number)
+        if not vat.is_valid(vat_code):
+            flash(_('VAT number is not valid.'), 'danger')
+            return False
+        parties = Party.search([
+            ('tax_identifier', '=', vat_code),
+            ], limit=1)
+        if parties:
+            if REGISTRATION_VAT_CHECK_CUSTOMER:
+                flash(_('A customer exists with your VAT. Please, '
+                        'login or contact us to create a new user.'),
+                    'danger')
+                return False
+        return True
+
 
 class ActivateForm(Form):
     "Activate form"
