@@ -436,6 +436,9 @@ def login(lang):
         else:
             return redirect(url_for(g.language))
 
+    if request.args.get('next'):
+        session['next'] = request.args.get('next')
+
     def _validate_user(user, password):
         '''Validate user and password
         :param user: object
