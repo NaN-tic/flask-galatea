@@ -7,10 +7,15 @@ from .tryton import tryton
 from .helpers import cache
 
 GALATEA_WEBSITE = current_app.config.get('TRYTON_GALATEA_SITE')
+COMPUTE_CACHE_KEY = None
 
 galatea = Blueprint('galatea', __name__, template_folder='templates')
 
 Uri = tryton.pool.get('galatea.uri')
+
+def set_compute_cache_key(cache_key):
+    global COMPUTE_CACHE_KEY
+    COMPUTE_CACHE_KEY = cache_key
 
 @galatea.route("/<path:uri_str>", endpoint="uri")
 @tryton.transaction()
@@ -19,9 +24,12 @@ def uri(uri_str):
     uri_str = uri_str[:-1] if uri_str and uri_str[-1] == '/' else uri_str
 
     use_cache = request.args.get('use_cache', '')
-    use_cache = use_cache.lower() in ('false', '0')
+    use_cache = use_cache.lower() not in ('false', '0')
     if use_cache:
-        cache_key = uri_str
+        if COMPUTE_CACHE_KEY:
+            cache_key = COMPUTE_CACHE_KEY(uri_str)
+        else:
+            cache_key = uri_str
         res = cache.get(cache_key)
         if res is not None:
             return res
