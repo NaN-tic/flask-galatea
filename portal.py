@@ -20,6 +20,7 @@ from trytond.modules.galatea.tools import remove_special_chars
 import stdnum.eu.vat as vat
 import random
 import string
+import datetime
 
 try:
     import hashlib
@@ -408,6 +409,7 @@ def _get_user(email, active=True):
         'salt',
         'activation_code',
         'manager',
+        'login_expire',
         ]
     if LOGIN_EXTRA_FIELDS:
         fields = fields+LOGIN_EXTRA_FIELDS
@@ -445,9 +447,15 @@ def login(lang):
         :param password: string
         return Bool
         '''
+        now = datetime.datetime.now()
+
         activation_code = user.activation_code
         if activation_code and len(activation_code) == 16:
             flash(_("Your account has not been activated yet!"))
+            return False
+
+        if user.login_expire and user.login_expire < now:
+            flash(_("Your login was expired. Contact with us to activate."))
             return False
 
         # if isinstance(password, unicode):
@@ -594,17 +602,21 @@ def reset_password(lang):
             flash(_('Not found email address.'))
             return render_template('reset-password.html', form=form)
 
-        # save activation code
-        act_code = create_act_code(code_type="reset")
-        _save_act_code(user, act_code)
+        now = datetime.datetime.now()
+        if user.get('login_expire') and user['login_expire'] < now:
+            flash(_("Your login was expired. Contact with us to activate."))
+        else:
+            # save activation code
+            act_code = create_act_code(code_type="reset")
+            _save_act_code(user, act_code)
 
-        # send email activation code
-        user['act_code'] = act_code
-        send_reset_email(user)
+            # send email activation code
+            user['act_code'] = act_code
+            send_reset_email(user)
 
-        flash('%s: %s' % (
-            _('An email has been sent to reset your password'),
-            user['email']))
+            flash('%s: %s' % (
+                _('An email has been sent to reset your password'),
+                user['email']))
         form.reset()
 
     return render_template('reset-password.html', form=form)
@@ -615,6 +627,7 @@ def activate(lang):
     '''Activate user account'''
     act_code = request.args.get('act_code')
     email = request.args.get('email')
+    now = datetime.datetime.now()
 
     form = current_app.extensions['Galatea'].activate_form()
     if request.form.get('act_code'):
@@ -629,8 +642,10 @@ def activate(lang):
     if users:
         user, = users
         if user:
+            if user.login_expire and user.login_expire < now:
+                flash(_("Your login was expired. Contact with us to activate."))
             # active new user
-            if len(act_code) == 16:
+            elif len(act_code) == 16:
                 if request.method == 'POST':
                     user.activation_code = None
                     user.save()
@@ -653,16 +668,15 @@ def activate(lang):
                         }
                     return render_template('activate.html', form=form,
                         data=data)
-
             # active new password
-            if len(act_code) == 12:
+            elif len(act_code) == 12:
                 login_user(user, remember=LOGIN_REMEMBER_ME)
                 flash(_('You are logged in'))
                 # Not signal login because cannot execute UPDATE in a read-only
                 # transaction
                 return redirect(url_for('.new-password', lang=g.language))
-
-    flash(_('Activation code is not valid.'))
+    else:
+        flash(_('Activation code is not valid.'))
     return redirect('/%s/' % g.language)
 
 @portal.route('/registration', methods=["GET", "POST"], endpoint="registration")
