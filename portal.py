@@ -44,7 +44,7 @@ AUTOLOGIN_POSTREGISTRATION = current_app.config.get('AUTOLOGIN_POSTREGISTRATION'
 REGISTRATION_MANUAL = current_app.config.get('REGISTRATION_MANUAL')
 
 VAT_COUNTRIES = [('', '')]
-for country in sorted(vat._country_codes):
+for country in sorted(vat.MEMBER_STATES):
     VAT_COUNTRIES.append((country, country.upper()))
 
 GalateaUser = tryton.pool.get('galatea.user')
