@@ -735,7 +735,7 @@ def registration(lang):
                 [m for em in form.errors.values() for m in em])
             flash(error_messages, 'danger')
 
-    form.vat_country.data = DEFAULT_COUNTRY.upper() or ''
+    form.vat_country.data = DEFAULT_COUNTRY and DEFAULT_COUNTRY.upper() or ''
     return render_template('registration.html', form=form, website=website)
 
 @portal.route('/subdivisions', methods=['GET'], endpoint="subdivisions")
