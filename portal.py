@@ -148,6 +148,8 @@ class RegistrationForm(Form):
             if getattr(self, field).type == 'SelectField':
                 if not getattr(self, field).choices and not getattr(self, field).flags.required:
                     delattr(self, field)
+        if not self.vat_country.data:
+            self.vat_country.data = ''
         rv = Form.validate(self)
         if not rv:
             return False
@@ -377,7 +379,11 @@ def send_activation_email(user):
             html = render_template('emails/activation-html.jinja', user=user),
             sender = current_app.config.get('DEFAULT_MAIL_SENDER'),
             recipients = [user.email])
-    mail.send(msg)
+    try:
+        mail.send(msg)
+    except ConnectionRefusedError:
+        current_app.logger.error('Error send email!')
+        abort(500)
 
 def send_new_password(user):
     """
