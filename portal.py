@@ -35,6 +35,7 @@ REGISTRATION_VAT = current_app.config.get('REGISTRATION_VAT')
 REGISTRATION_VAT_CHECK_CUSTOMER = current_app.config.get(
     'REGISTRATION_VAT_CHECK_CUSTOMER', False)
 DEFAULT_COUNTRY = current_app.config.get('DEFAULT_COUNTRY')
+DEFAULT_LANGUAGE = current_app.config.get('LANGUAGE')
 REDIRECT_AFTER_LOGIN = current_app.config.get('REDIRECT_AFTER_LOGIN')
 REDIRECT_AFTER_LOGOUT = current_app.config.get('REDIRECT_AFTER_LOGOUT')
 LOGIN_REMEMBER_ME = current_app.config.get('LOGIN_REMEMBER_ME', False)
@@ -150,6 +151,8 @@ class RegistrationForm(Form):
                     delattr(self, field)
         if not self.vat_country.data:
             self.vat_country.data = ''
+        if not self.language.data:
+            self.language.data = g.language or DEFAULT_LANGUAGE
         rv = Form.validate(self)
         if not rv:
             return False
