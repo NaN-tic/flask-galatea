@@ -36,6 +36,7 @@ REGISTRATION_VAT = current_app.config.get('REGISTRATION_VAT')
 REGISTRATION_VAT_CHECK_CUSTOMER = current_app.config.get(
     'REGISTRATION_VAT_CHECK_CUSTOMER', False)
 DEFAULT_COUNTRY = current_app.config.get('DEFAULT_COUNTRY')
+DEFAULT_LANGUAGE = current_app.config.get('LANGUAGE')
 REDIRECT_AFTER_LOGIN = current_app.config.get('REDIRECT_AFTER_LOGIN')
 REDIRECT_AFTER_LOGOUT = current_app.config.get('REDIRECT_AFTER_LOGOUT')
 LOGIN_REMEMBER_ME = current_app.config.get('LOGIN_REMEMBER_ME', False)
@@ -149,6 +150,10 @@ class RegistrationForm(Form):
             if getattr(self, field).type == 'SelectField':
                 if not getattr(self, field).choices and not getattr(self, field).flags.required:
                     delattr(self, field)
+        if not self.vat_country.data:
+            self.vat_country.data = ''
+        if not self.language.data:
+            self.language.data = g.language or DEFAULT_LANGUAGE
         rv = Form.validate(self)
         if not rv:
             return False
@@ -381,6 +386,10 @@ def send_activation_email(user):
     try:
         mail.send(msg)
     except SMTPAuthenticationError:
+        current_app.logger.error('Error send email!')
+        abort(500)
+    except ConnectionRefusedError:
+        current_app.logger.error('Error send email!')
         abort(500)
 
 def send_new_password(user):
@@ -399,6 +408,10 @@ def send_new_password(user):
     try:
         mail.send(msg)
     except SMTPAuthenticationError:
+        current_app.logger.error('Error send email!')
+        abort(500)
+    except ConnectionRefusedError:
+        current_app.logger.error('Error send email!')
         abort(500)
 
 def _get_user(email, active=True):
@@ -742,7 +755,7 @@ def registration(lang):
                 [m for em in form.errors.values() for m in em])
             flash(error_messages, 'danger')
 
-    form.vat_country.data = DEFAULT_COUNTRY.upper() or ''
+    form.vat_country.data = DEFAULT_COUNTRY and DEFAULT_COUNTRY.upper() or ''
     return render_template('registration.html', form=form, website=website)
 
 @portal.route('/subdivisions', methods=['GET'], endpoint="subdivisions")
