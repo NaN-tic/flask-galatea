@@ -16,6 +16,7 @@ from .signals import (login as slogin, failed_login as sfailed_login,
 from .helpers import manager_required
 from trytond.transaction import Transaction
 from trytond.modules.galatea.tools import remove_special_chars
+from smtplib import SMTPAuthenticationError
 
 import stdnum.eu.vat as vat
 import random
@@ -377,7 +378,10 @@ def send_activation_email(user):
             html = render_template('emails/activation-html.jinja', user=user),
             sender = current_app.config.get('DEFAULT_MAIL_SENDER'),
             recipients = [user.email])
-    mail.send(msg)
+    try:
+        mail.send(msg)
+    except SMTPAuthenticationError:
+        abort(500)
 
 def send_new_password(user):
     """
@@ -392,7 +396,10 @@ def send_new_password(user):
             html = render_template('emails/new-password-html.jinja', user=user),
             sender = current_app.config.get('DEFAULT_MAIL_SENDER'),
             recipients = [user['email']])
-    mail.send(msg)
+    try:
+        mail.send(msg)
+    except SMTPAuthenticationError:
+        abort(500)
 
 def _get_user(email, active=True):
     '''Get user
