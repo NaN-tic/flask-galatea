@@ -709,8 +709,11 @@ def registration(lang):
     website = Website(GALATEA_WEBSITE)
 
     form = current_app.extensions['Galatea'].registration_form()
-    form.language.choices = [(l.code, l.name) for l in website.languages]
-
+    if website.languages:
+        languages = [(l.code, l.name) for l in website.languages]
+    else:
+         languages = [(DEFAULT_LANGUAGE, DEFAULT_LANGUAGE)]
+    form.language.choices = languages
     if hasattr(form, 'country'):
         if website.countries:
             countries = [(c.id, c.name) for c in website.countries]
