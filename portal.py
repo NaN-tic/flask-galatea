@@ -6,7 +6,7 @@ from flask import (Blueprint, request, render_template, current_app, session,
 from flask_babel import gettext as _, lazy_gettext as __
 from flask_mail import Mail, Message
 from flask_wtf import FlaskForm as Form
-from wtforms import TextField, PasswordField, SelectField, HiddenField, validators
+from wtforms import StringField, PasswordField, SelectField, HiddenField, validators
 from wtforms.fields.html5 import EmailField
 from flask_login import (UserMixin, login_user, logout_user, login_required,
     current_user)
@@ -110,7 +110,7 @@ class NewPasswordForm(Form):
 
 class ResetPasswordForm(Form):
     "Reset Password form"
-    email = TextField(_('Email'), [validators.InputRequired(), validators.Email()])
+    email = StringField(_('Email'), [validators.InputRequired(), validators.Email()])
 
     def __init__(self, *args, **kwargs):
         Form.__init__(self, *args, **kwargs)
@@ -131,14 +131,14 @@ class RegistrationForm(Form):
     if REGISTRATION_VAT:
         vat_required = [validators.InputRequired()]
 
-    name = TextField(__('Name'), [validators.InputRequired()])
-    email = TextField(__('Email'), [validators.InputRequired(), validators.Email()])
+    name = StringField(__('Name'), [validators.InputRequired()])
+    email = StringField(__('Email'), [validators.InputRequired(), validators.Email()])
     password = PasswordField(__('Password'), [validators.InputRequired()])
     confirm = PasswordField(__('Confirm'))
-    phone = TextField(__('Phone'))
+    phone = StringField(__('Phone'))
     vat_country = SelectField(__('VAT Country'), choices=VAT_COUNTRIES)
-    vat_number = TextField(__('VAT Number'), vat_required)
-    code = TextField(__('Code'))
+    vat_number = StringField(__('VAT Number'), vat_required)
+    code = StringField(__('Code'))
     language = SelectField(__('Language'))
 
     def __init__(self, *args, **kwargs):
