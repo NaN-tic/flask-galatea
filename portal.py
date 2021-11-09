@@ -6,8 +6,8 @@ from flask import (Blueprint, request, render_template, current_app, session,
 from flask_babel import gettext as _, lazy_gettext as __
 from flask_mail import Mail, Message
 from flask_wtf import FlaskForm as Form
-from wtforms import StringField, PasswordField, SelectField, HiddenField, validators
-from wtforms.fields.html5 import EmailField
+from wtforms import (StringField, PasswordField, SelectField, HiddenField,
+    validators, EmailField)
 from flask_login import (UserMixin, login_user, logout_user, login_required,
     current_user)
 from .tryton import tryton
