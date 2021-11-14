@@ -23,16 +23,19 @@ def uri(uri_str):
     '''Process URI'''
     uri_str = uri_str[:-1] if uri_str and uri_str[-1] == '/' else uri_str
 
-    use_cache = request.args.get('use_cache', '')
-    use_cache = use_cache.lower() not in ('false', '0')
-    if use_cache:
-        if COMPUTE_CACHE_KEY:
-            cache_key = COMPUTE_CACHE_KEY(uri_str)
-        else:
-            cache_key = uri_str
-        res = cache.get(cache_key)
-        if res is not None:
-            return res
+    if cache:
+        use_cache = request.args.get('use_cache', '')
+        use_cache = use_cache.lower() not in ('false', '0')
+        if use_cache:
+            if COMPUTE_CACHE_KEY:
+                cache_key = COMPUTE_CACHE_KEY(uri_str)
+            else:
+                cache_key = uri_str
+            res = cache.get(cache_key)
+            if res is not None:
+                return res
+    else:
+        use_cache = False
 
 
     with Transaction().set_context(website=GALATEA_WEBSITE):
