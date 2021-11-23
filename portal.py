@@ -90,6 +90,7 @@ class LoginForm(Form):
 
 class NewPasswordForm(Form):
     "New Password form"
+    current_password = PasswordField(__('Current Password'), [validators.InputRequired()])
     password = PasswordField(__('Password'), [validators.InputRequired(),
         validators.EqualTo('confirm', message=_('Passwords must match'))])
     confirm = PasswordField(__('Confirm'), [validators.InputRequired()])
@@ -99,7 +100,39 @@ class NewPasswordForm(Form):
 
     def validate(self):
         rv = Form.validate(self)
+        if not self._validate_password():
+            flash(_("The current password is not correct."), "danger")
+            return False
+        if self.password.data != self.confirm.data:
+            flash(_("The passwords don't match."), "danger")
+            return False
+        if len(self.password.data) < current_app.config.get('LEN_PASSWORD', 6):
+            flash(
+                _("Password length is not valid."), "danger")
+            return False
         if not rv:
+            flash(_("New password is not valid."), "danger")
+            return False
+        return True
+
+    def _validate_password(self):
+        '''Validate if a password is valid for the user in session
+        :param password: string
+        return Bool
+        '''
+        user = GalateaUser(session['user'])
+        password = self.current_password.data
+        if not password:
+            return False
+        password = password.encode('utf-8')
+        salt = user.salt.encode('utf-8') if user.salt else ''
+        if salt:
+            password += salt
+        if hashlib:
+            digest = hashlib.sha1(password).hexdigest()
+        else:
+            digest = sha.new(password).hexdigest()
+        if digest != user.password:
             return False
         return True
 
