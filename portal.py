@@ -667,8 +667,6 @@ def activate(lang):
             # active new user
             elif len(act_code) == 16:
                 if request.method == 'POST':
-                    user.activation_code = None
-                    user.save()
                     login_user(user, remember=LOGIN_REMEMBER_ME)
                     flash(_('Your account has been activated.'))
                     slogin.send(current_app._get_current_object(),
