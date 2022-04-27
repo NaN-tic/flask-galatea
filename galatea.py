@@ -21,7 +21,8 @@ def set_compute_cache_key(cache_key):
 @tryton.transaction()
 def uri(uri_str):
     '''Process URI'''
-    uri_str = uri_str[:-1] if uri_str and uri_str[-1] == '/' else uri_str
+    if uri_str and uri_str.endswith('/'):
+        return redirect('/' + uri_str.rstrip('/'), code=303)
 
     use_cache = request.args.get('use_cache', '')
     use_cache = use_cache.lower() not in ('false', '0')
