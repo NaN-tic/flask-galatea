@@ -298,7 +298,6 @@ class RegistrationForm(Form):
             'email': email,
             'password': password,
             'activation_code': act_code,
-            'company': Website(GALATEA_WEBSITE).company.id,
             'party': party.id
             }
         user, = GalateaUser.create([user_data])
