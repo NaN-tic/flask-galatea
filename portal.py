@@ -6,8 +6,8 @@ from flask import (Blueprint, request, render_template, current_app, session,
 from flask_babel import gettext as _, lazy_gettext as __
 from flask_mail import Mail, Message
 from flask_wtf import FlaskForm as Form
-from wtforms import (StringField, PasswordField, SelectField, HiddenField,
-    validators, EmailField)
+from wtforms import (BooleanField, StringField, PasswordField, SelectField,
+    HiddenField, validators, EmailField)
 from flask_login import (UserMixin, login_user, logout_user, login_required,
     current_user)
 from .tryton import tryton
@@ -173,6 +173,7 @@ class RegistrationForm(Form):
     vat_number = StringField(__('VAT Number'), vat_required)
     code = StringField(__('Code'))
     language = SelectField(__('Language'))
+    agree = BooleanField(__('Agree'), [validators.InputRequired()])
 
     def __init__(self, *args, **kwargs):
         Form.__init__(self, *args, **kwargs)
@@ -196,6 +197,7 @@ class RegistrationForm(Form):
         self.password.data = ''
         self.confirm.data = ''
         self.vat_number.data = ''
+        self.agree.data = False
 
     def save(self, send_act_code=True):
         name = request.form.get('name')
