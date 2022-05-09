@@ -54,7 +54,9 @@ Website = tryton.pool.get('galatea.website')
 Party = tryton.pool.get('party.party')
 ContactMechanism = tryton.pool.get('party.contact_mechanism')
 PartyIdentifier = tryton.pool.get('party.identifier')
+Country = tryton.pool.get('country.country')
 Subdivision = tryton.pool.get('country.subdivision')
+SubdivisionType = tryton.pool.get('party.address.subdivision_type')
 Lang = tryton.pool.get('ir.lang')
 
 
@@ -795,8 +797,23 @@ def registration(lang):
 @tryton.transaction()
 def subdivisions(lang):
     '''Return all subdivisions by country (Json)'''
-    country = int(request.args.get('country') or 0)
-    subdivisions = Subdivision.search([('country', '=', country)])
+    try:
+        country_id = int(request.args.get('country', 0))
+    except ValueError:
+        return abort(500)
+
+    countries = Country.search([
+        ('id', '=', country_id),
+        ], limit=1)
+    if not countries:
+        return jsonify(result=[])
+    country, = countries
+    types = SubdivisionType.get_types(country)
+
+    domain = [('country', '=', country)]
+    if types:
+        domain.append(('type', 'in', types))
+    subdivisions = Subdivision.search(domain)
 
     return jsonify(
         result=[{
