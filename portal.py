@@ -1,6 +1,19 @@
 #This file is part galatea blueprint for Flask.
 #The COPYRIGHT file at the top level of this repository contains
 #the full copyright notices and license terms.
+import random
+import string
+import datetime
+import json
+import secrets
+import stdnum.eu.vat as vat
+
+try:
+    import hashlib
+except ImportError:
+    hashlib = None
+    import sha
+
 from flask import (Blueprint, request, render_template, current_app, session,
     jsonify, redirect, url_for, flash, abort, g)
 from flask_babel import gettext as _, lazy_gettext as __
@@ -17,19 +30,24 @@ from .helpers import manager_required
 from trytond.transaction import Transaction
 from trytond.modules.galatea.tools import remove_special_chars
 from smtplib import SMTPAuthenticationError
-
-import stdnum.eu.vat as vat
-import random
-import string
-import datetime
-
-try:
-    import hashlib
-except ImportError:
-    hashlib = None
-    import sha
+from flask_dance.consumer import oauth_authorized
+from flask_dance.contrib.google import make_google_blueprint, google
+from flask_dance.contrib.facebook import make_facebook_blueprint, facebook
 
 portal = Blueprint('portal', __name__, template_folder='templates')
+
+google_blueprint = make_google_blueprint(
+    client_id=current_app.config.get('GOOGLE_CLIENT_ID'),
+    client_secret=current_app.config.get('GOOGLE_CLIENT_SECRET'),
+    scope=[
+        'openid',
+        'https://www.googleapis.com/auth/userinfo.email',
+        'https://www.googleapis.com/auth/userinfo.profile',
+        ])
+facebook_blueprint = make_facebook_blueprint(
+    client_id=current_app.config.get('FACEBOOK_CLIENT_ID'),
+    client_secret=current_app.config.get('FACEBOOK_CLIENT_SECRET'),
+    scope=['public_profile', 'email'])
 
 GALATEA_WEBSITE = current_app.config.get('TRYTON_GALATEA_SITE')
 REGISTRATION_VAT = current_app.config.get('REGISTRATION_VAT')
@@ -50,6 +68,7 @@ for country in sorted(vat.MEMBER_STATES):
     VAT_COUNTRIES.append((country, country.upper()))
 
 GalateaUser = tryton.pool.get('galatea.user')
+OAuth = tryton.pool.get('galatea.user.oauth')
 Website = tryton.pool.get('galatea.website')
 Party = tryton.pool.get('party.party')
 ContactMechanism = tryton.pool.get('party.contact_mechanism')
@@ -305,6 +324,31 @@ class RegistrationForm(Form):
                 return False
         return True
 
+
+class SSORegistrationForm(Form):
+
+    def save(self):
+        if google.authorized:
+            data = get_google_data()
+        elif facebook.authorized:
+            data = get_facebook_data()
+
+        user = self.store(email=data['email'], name=data['name'])
+        # Password is a required field, so we create a random one
+        user.password = secrets.token_urlsafe()
+        user.save()
+        oauth = OAuth()
+        # TODO: Improve mechanism to choose between google/facebook tokens
+        oauth.user = user
+        oauth.provider = 'google'
+        oauth.token = session.get('google_oauth_token')
+        if not oauth.token:
+            oauth.provider = 'facebook'
+            oauth.token = session.get('facebook_oauth_token')
+        oauth.save()
+        return {
+            'user': user,
+            }
 
 class ActivateForm(Form):
     "Activate form"
@@ -759,6 +803,133 @@ def registration(lang):
 
     form.vat_country.data = DEFAULT_COUNTRY and DEFAULT_COUNTRY.upper() or ''
     return render_template('registration.html', form=form, website=website)
+
+@portal.route('/registration/single-sign-on', methods=["GET", "POST"],
+    endpoint="registration-sso")
+@tryton.transaction()
+def registration_sso(lang):
+    form = SSORegistrationForm()
+    if request.method == 'POST':
+        if form.validate_on_submit():
+            result = form.save()
+            user = result and result.get('user')
+            if user:
+                login_user(user, remember=False)
+                if (current_app.config.get('USE_SESSION_FOR_NEXT')
+                        and session.get('next')):
+                    return redirect(session['next'])
+                elif REDIRECT_AFTER_LOGIN:
+                    return redirect(
+                        url_for(REDIRECT_AFTER_LOGIN, lang=g.language))
+                else:
+                    return redirect(url_for(g.language))
+        else:
+            error_messages = ", ".join(
+                [m for em in form.errors.values() for m in em])
+            flash(error_messages, 'danger')
+
+    return render_template('portal/registration-sso.html', form=form)
+
+def single_sign_on(email):
+    user = User.get_user_from_email(email)
+    if not user:
+        return redirect(url_for('portal.registration-sso', lang=g.language))
+    login_user(user, remember=False)
+    if (current_app.config.get('USE_SESSION_FOR_NEXT')
+            and session.get('next')):
+        return redirect(session['next'])
+    elif REDIRECT_AFTER_LOGIN:
+        return redirect(
+            url_for(REDIRECT_AFTER_LOGIN, lang=g.language))
+
+def get_google_data():
+    '''
+    Query google REST API with user information.
+
+    resp = google.get("/oauth2/v1/userinfo")
+    resp.ok => True
+    With scopes: openid, userinfo.email, userinfo.profile
+    resp.text => {
+        "id": "110542033402383312743",
+        "email": "albert.cervera@collabout.com",
+        "verified_email": true,
+        "name": "Albert Cervera i Areny",
+        "given_name": "Albert",
+        "family_name": "Cervera i Areny",
+        "picture": "https://lh3.googleusercontent.com/a/AATXAJzkBhLGqg2ovL5FsV-60hlLa1xJFkmVP2UIECPu=s96-c",
+        "locale": "ca",
+        "hd": "collabout.com"
+    }
+    '''
+    if not google.authorized:
+        return
+    res = google.get('/oauth2/v1/userinfo')
+    if not res.ok:
+        return
+    data = json.loads(res.text)
+    return {
+        'name': data.get('name'),
+        'email': data.get('email'),
+        }
+
+@oauth_authorized.connect_via(google_blueprint)
+@tryton.transaction(readonly=False)
+def oauth_google(blueprint, token):
+    '''
+    Called when Google Authorization is received.
+    '''
+    # set OAuth token in the token storage backend
+    data = get_google_data()
+    if not data:
+        return redirect(url_for('base.home', lang=g.language))
+    blueprint.token = token
+    return single_sign_on(data['email'])
+
+def get_facebook_data():
+    '''
+    Query Facebook REST API with user information.
+
+    https://developers.facebook.com/docs/permissions/reference/#e
+    https://developers.facebook.com/docs/graph-api/overview/
+    resp = facebook.get("/me?fields=id,name,email,picture")
+    resp.ok => True
+    resp.text => {
+        "id":"10226727855851398",
+        "name":"Albert Cervera Areny",
+        "email":"albert\u0040nan-tic.com",
+        "picture": {
+            "data": {
+                "height":50,
+                "is_silhouette":false,
+                "url":"https://platform-lookaside.fbsbx.com/platform/profilepic/?asid=10226727855851398&height=50&width=50&ext=1640643897&hash=AeR-dop1fPikFeKiqZM",
+                "width":50
+            }
+        }
+    }
+    '''
+    if not facebook.authorized:
+        return
+    res = facebook.get('/me?fields=id,name,email,picture')
+    if not res.ok:
+        return
+    data = json.loads(res.text)
+    return {
+        'name': data.get('name'),
+        'email': data.get('email'),
+        }
+
+@oauth_authorized.connect_via(facebook_blueprint)
+@tryton.transaction(readonly=False)
+def oauth_facebook(blueprint, token):
+    '''
+    Called when Facebook Authorization is received.
+    '''
+    # set OAuth token in the token storage backend
+    data = get_facebook_data()
+    if not data:
+        return redirect(url_for('base.home', lang=g.language))
+    blueprint.token = token
+    return single_sign_on(data['email'])
 
 @portal.route('/subdivisions', methods=['GET'], endpoint="subdivisions")
 @tryton.transaction()
