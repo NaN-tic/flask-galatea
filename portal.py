@@ -331,8 +331,7 @@ class SSORegistrationForm(Form):
         elif facebook.authorized:
             data = get_facebook_data()
         else:
-            flash(_('We can not registration SSO'), 'danger')
-            return redirect(url_for(g.language))
+            return
 
         name = data['name']
         email = data['email']
@@ -366,6 +365,7 @@ class SSORegistrationForm(Form):
         user.password = secrets.token_urlsafe()
         user.activation_code = create_act_code(code_type="sso")
         user.party = party
+        user.last_login = datetime.now()
         user.save()
 
         oauth = OAuth()
@@ -865,6 +865,7 @@ def single_sign_on(email):
     user = _get_user(email)
     if not user:
         return redirect(url_for('portal.registration-sso', lang=g.language))
+    user = GalateaUser(user['id'])
     login_user(user, remember=False)
     if (current_app.config.get('USE_SESSION_FOR_NEXT')
             and session.get('next')):
