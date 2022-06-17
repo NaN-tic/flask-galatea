@@ -365,7 +365,7 @@ class SSORegistrationForm(Form):
         user.password = secrets.token_urlsafe()
         user.activation_code = create_act_code(code_type="sso")
         user.party = party
-        user.last_login = datetime.now()
+        user.last_login = datetime.datetime.now()
         user.save()
 
         oauth = OAuth()
