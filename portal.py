@@ -358,7 +358,9 @@ class SSORegistrationForm(Form):
                 ContactMechanism(type='email', value=email)]
             party.save()
 
-        user = GalateaUser()
+        default_values = GalateaUser.default_get(GalateaUser._fields.keys(),
+            with_rec_name=False)
+        user = GalateaUser(**default_values)
         user.display_name = name
         user.email = email
         user.password = secrets.token_urlsafe()
