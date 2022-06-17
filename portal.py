@@ -423,7 +423,7 @@ def create_act_code(code_type="new"):
     :param code_type: string
     return activation code
     """
-    assert code_type in ("new", "reset")
+    assert code_type in ("new", "reset", "sso")
     length = 16 if code_type == "new" else 12
     act_code = ''.join(random.sample(string.ascii_letters + string.digits, length))
 
