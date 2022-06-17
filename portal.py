@@ -253,9 +253,7 @@ class RegistrationForm(Form):
             default_values = Party.default_get(Party._fields.keys(),
                 with_rec_name=False)
 
-            party = Party()
-            for key in default_values:
-                setattr(party, key, default_values[key])
+            party = Party(**default_values)
             party.name = name
             party.addresses = []
             party.lang = lang
@@ -332,11 +330,42 @@ class SSORegistrationForm(Form):
             data = get_google_data()
         elif facebook.authorized:
             data = get_facebook_data()
+        else:
+            flash(_('We can not registration SSO'), 'danger')
+            return redirect(url_for(g.language))
 
-        user = self.store(email=data['email'], name=data['name'])
-        # Password is a required field, so we create a random one
+        name = data['name']
+        email = data['email']
+
+        contact_mechanisms = ContactMechanism.search([
+            ('type', '=', 'email'),
+            ('value', '=', email),
+            ], limit=1)
+        if contact_mechanisms:
+            contact_mechanism, = contact_mechanisms
+            party = contact_mechanism.party
+        else:
+            language = g.language
+            langs = Lang.search([('code', '=', language)], limit=1)
+
+            default_values = Party.default_get(Party._fields.keys(),
+                with_rec_name=False)
+            party = Party(**default_values)
+            party.name = name
+            party.addresses = []
+            party.lang = langs[0] if langs else None
+            party.contact_mechanisms = [
+                ContactMechanism(type='email', value=email)]
+            party.save()
+
+        user = GalateaUser()
+        user.display_name = name
+        user.email = email
         user.password = secrets.token_urlsafe()
+        user.activation_code = create_act_code(code_type="sso")
+        user.party = party
         user.save()
+
         oauth = OAuth()
         # TODO: Improve mechanism to choose between google/facebook tokens
         oauth.user = user
@@ -828,10 +857,10 @@ def registration_sso(lang):
                 [m for em in form.errors.values() for m in em])
             flash(error_messages, 'danger')
 
-    return render_template('portal/registration-sso.html', form=form)
+    return render_template('registration-sso.html', form=form)
 
 def single_sign_on(email):
-    user = User.get_user_from_email(email)
+    user = _get_user(email)
     if not user:
         return redirect(url_for('portal.registration-sso', lang=g.language))
     login_user(user, remember=False)
@@ -881,7 +910,7 @@ def oauth_google(blueprint, token):
     # set OAuth token in the token storage backend
     data = get_google_data()
     if not data:
-        return redirect(url_for('base.home', lang=g.language))
+        return redirect(url_for(g.language))
     blueprint.token = token
     return single_sign_on(data['email'])
 
@@ -927,7 +956,7 @@ def oauth_facebook(blueprint, token):
     # set OAuth token in the token storage backend
     data = get_facebook_data()
     if not data:
-        return redirect(url_for('base.home', lang=g.language))
+        return redirect(url_for(g.language))
     blueprint.token = token
     return single_sign_on(data['email'])
 
