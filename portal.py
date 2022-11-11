@@ -4,7 +4,6 @@
 from flask import (Blueprint, request, render_template, current_app, session,
     jsonify, redirect, url_for, flash, abort, g)
 from flask_babel import gettext as _, lazy_gettext as __
-from flask_mail import Mail, Message
 from flask_wtf import FlaskForm as Form
 from wtforms import (StringField, PasswordField, SelectField, HiddenField,
     validators, EmailField)
@@ -15,9 +14,13 @@ from .signals import (login as slogin, failed_login as sfailed_login,
     logout as slogout, registration as sregistration)
 from .helpers import manager_required
 from trytond.transaction import Transaction
+from trytond.sendmail import sendmail
 from trytond.modules.galatea.tools import remove_special_chars
-from smtplib import SMTPAuthenticationError
+from email.header import Header
+from email.mime.multipart import MIMEMultipart
+from email.mime.text import MIMEText
 
+import os
 import stdnum.eu.vat as vat
 import random
 import string
@@ -356,64 +359,43 @@ def create_act_code(code_type="new"):
 
     return act_code
 
+def send_mail(user, subject, template):
+    mail_sender = current_app.config.get('DEFAULT_MAIL_SENDER')
+    from_addr = os.environ.get('TRYTOND_EMAIL__FROM', mail_sender)
+    to_addr = user['email']
+    subject =  '%s - %s' % (current_app.config.get('TITLE'), subject)
+    plain = render_template('emails/'+template+'-text.jinja', user=user)
+    html = render_template('emails/'+template+'-html.jinja', user=user)
+
+    msg = MIMEMultipart('alternative', _charset='utf-8')
+    msg['From'] = from_addr
+    msg['To'] = to_addr
+    msg['Subject'] = Header(subject, 'utf-8')
+    msg.attach(MIMEText(plain, 'plain', _charset='utf-8'))
+    msg.attach(MIMEText(html, 'html', _charset='utf-8'))
+
+    sendmail(from_addr, [to_addr], msg)
+
 def send_reset_email(user):
     """
     Send an account reset email to the user
     :param user: dict
     """
-    mail = Mail(current_app)
-
-    subject =  '%s - %s' % (current_app.config.get('TITLE'), _('Account Password Reset'))
-    msg = Message(subject,
-            body = render_template('emails/reset-text.jinja', user=user),
-            html = render_template('emails/reset-html.jinja', user=user),
-            sender = current_app.config.get('DEFAULT_MAIL_SENDER'),
-            recipients = [user['email']])
-    mail.send(msg)
+    send_mail(user,  _('Account Password Reset'), 'reset')
 
 def send_activation_email(user):
     """
     Send an new account email to the user
     :param user: GalateaUser object
     """
-    mail = Mail(current_app)
-
-    subject =  '%s - %s' % (current_app.config.get('TITLE'), _('New Account Activation'))
-    msg = Message(subject,
-            body = render_template('emails/activation-text.jinja', user=user),
-            html = render_template('emails/activation-html.jinja', user=user),
-            sender = current_app.config.get('DEFAULT_MAIL_SENDER'),
-            recipients = [user.email])
-    try:
-        mail.send(msg)
-    except SMTPAuthenticationError:
-        current_app.logger.error('Error send email!')
-        abort(500)
-    except ConnectionRefusedError:
-        current_app.logger.error('Error send email!')
-        abort(500)
+    send_mail(user,  _('New Account Activation'), 'activation')
 
 def send_new_password(user):
     """
     Send an new password account to the user
     :param user: dict
     """
-    mail = Mail(current_app)
-
-    subject =  '%s - %s' % (current_app.config.get('TITLE'), _('New Account Password'))
-    msg = Message(subject,
-            body = render_template('emails/new-password-text.jinja', user=user),
-            html = render_template('emails/new-password-html.jinja', user=user),
-            sender = current_app.config.get('DEFAULT_MAIL_SENDER'),
-            recipients = [user['email']])
-    try:
-        mail.send(msg)
-    except SMTPAuthenticationError:
-        current_app.logger.error('Error send email!')
-        abort(500)
-    except ConnectionRefusedError:
-        current_app.logger.error('Error send email!')
-        abort(500)
+    send_mail(user,  _('New Account Password'), 'new-password')
 
 def _get_user(email, active=True):
     '''Get user
