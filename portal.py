@@ -20,6 +20,7 @@ from smtplib import SMTPAuthenticationError
 from email.header import Header
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
+from email import encoders, charset
 
 import os
 import stdnum.eu.vat as vat
@@ -368,12 +369,16 @@ def send_mail(user, subject, template):
     plain = render_template('emails/'+template+'-text.jinja', user=user)
     html = render_template('emails/'+template+'-html.jinja', user=user)
 
-    msg = MIMEMultipart('alternative', _charset='utf-8')
+    msg = MIMEMultipart()
+    charset.add_charset('utf-8', charset.QP, charset.QP)
     msg['From'] = from_addr
     msg['To'] = to_addr
     msg['Subject'] = Header(subject, 'utf-8')
-    msg.attach(MIMEText(plain, 'plain', _charset='utf-8'))
-    msg.attach(MIMEText(html, 'html', _charset='utf-8'))
+
+    body = MIMEMultipart('alternative')
+    body.attach(MIMEText(plain, 'plain', _charset='utf-8'))
+    body.attach(MIMEText(html, 'html', _charset='utf-8'))
+    msg.attach(body)
 
     try:
         sendmail(from_addr, [to_addr], msg)
