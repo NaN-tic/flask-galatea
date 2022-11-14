@@ -16,6 +16,7 @@ from .helpers import manager_required
 from trytond.transaction import Transaction
 from trytond.sendmail import sendmail
 from trytond.modules.galatea.tools import remove_special_chars
+from smtplib import SMTPAuthenticationError
 from email.header import Header
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
@@ -374,7 +375,11 @@ def send_mail(user, subject, template):
     msg.attach(MIMEText(plain, 'plain', _charset='utf-8'))
     msg.attach(MIMEText(html, 'html', _charset='utf-8'))
 
-    sendmail(from_addr, [to_addr], msg)
+    try:
+        sendmail(from_addr, [to_addr], msg)
+    except SMTPAuthenticationError:
+        current_app.logger.error('Error send email!')
+        abort(500)
 
 def send_reset_email(user):
     """
