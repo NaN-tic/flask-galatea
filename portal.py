@@ -14,13 +14,13 @@ from .signals import (login as slogin, failed_login as sfailed_login,
     logout as slogout, registration as sregistration)
 from .helpers import manager_required
 from trytond.transaction import Transaction
-from trytond.sendmail import sendmail
+from trytond.sendmail import sendmail_transactional, get_smtp_server, SMTPDataManager
 from trytond.modules.galatea.tools import remove_special_chars
 from smtplib import SMTPAuthenticationError
 from email.header import Header
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
-from email import encoders, charset
+from email import charset
 
 import os
 import stdnum.eu.vat as vat
@@ -381,9 +381,12 @@ def send_mail(user, subject, template):
     msg.attach(body)
 
     try:
-        sendmail(from_addr, [to_addr], msg)
-    except SMTPAuthenticationError:
+        datamanager = SMTPDataManager()
+        datamanager._server = get_smtp_server()
+        sendmail_transactional(from_addr, [to_addr], msg, datamanager=datamanager)
+    except SMTPAuthenticationError as e:
         current_app.logger.error('Error send email!')
+        current_app.logger.error(str(e))
         abort(500)
 
 def send_reset_email(user):
@@ -391,21 +394,21 @@ def send_reset_email(user):
     Send an account reset email to the user
     :param user: dict
     """
-    send_mail(user,  _('Account Password Reset'), 'reset')
+    send_mail(user, _('Account Password Reset'), 'reset')
 
 def send_activation_email(user):
     """
     Send an new account email to the user
     :param user: GalateaUser object
     """
-    send_mail(user,  _('New Account Activation'), 'activation')
+    send_mail(user, _('New Account Activation'), 'activation')
 
 def send_new_password(user):
     """
     Send an new password account to the user
     :param user: dict
     """
-    send_mail(user,  _('New Account Password'), 'new-password')
+    send_mail(user, _('New Account Password'), 'new-password')
 
 def _get_user(email, active=True):
     '''Get user
@@ -732,8 +735,14 @@ def registration(lang):
                     flash(_('Your account is pending to validate'))
                     form.reset()
                 else:
+                    user_ = {
+                        'party': user.party,
+                        'display_name': user.display_name,
+                        'email': user.email,
+                        'activation_code': user.activation_code,
+                        }
                     # send email activation account
-                    send_activation_email(user)
+                    send_activation_email(user_)
                     sregistration.send(
                         current_app._get_current_object(),
                         user=user,
