@@ -100,7 +100,7 @@ class NewPasswordForm(Form):
     current_password = PasswordField(__('Current Password'), [validators.InputRequired()])
     password = PasswordField(__('Password'), [validators.InputRequired(),
         validators.EqualTo('confirm', message=_('Passwords must match'))])
-    confirm = PasswordField(__('Confirm'), [validators.InputRequired()])
+    confirm = PasswordField(__('Confirm Password'), [validators.InputRequired()])
 
     def __init__(self, *args, **kwargs):
         Form.__init__(self, *args, **kwargs)
@@ -174,7 +174,7 @@ class RegistrationForm(Form):
     name = StringField(__('Name'), [validators.InputRequired()])
     email = StringField(__('Email'), [validators.InputRequired(), validators.Email()])
     password = PasswordField(__('Password'), [validators.InputRequired()])
-    confirm = PasswordField(__('Confirm'))
+    confirm = PasswordField(__('Confirm Password'), [validators.InputRequired()])
     phone = StringField(__('Phone'))
     vat_country = SelectField(__('VAT Country'), choices=VAT_COUNTRIES)
     vat_number = StringField(__('VAT Number'), vat_required)
