@@ -209,8 +209,8 @@ class RegistrationForm(Form):
     def save(self, send_act_code=True):
         name = request.form.get('name')
         email = request.form.get('email')
-        password = request.form.get('password')
-        confirm = request.form.get('confirm')
+        password = request.form.get('password', '')
+        confirm = request.form.get('confirm', '')
         phone = request.form.get('phone')
         vat_country = request.form.get('vat_country')
         vat_number = request.form.get('vat_number')
