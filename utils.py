@@ -28,10 +28,10 @@ def get_tryton_locale(lang):
 def slugify(value):
     """Convert value to slug: az09 and replace spaces by -"""
     try:
-        if isinstance(value, unicode):
+        if isinstance(value):
             name = slug(value)
         else:
-            name = slug(unicode(value, 'UTF-8'))
+            name = slug(str(value, 'UTF-8'))
     except:
         name = ''
     return name
