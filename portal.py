@@ -16,7 +16,6 @@ from .helpers import manager_required
 from trytond.transaction import Transaction
 from trytond.sendmail import sendmail_transactional
 from trytond.modules.galatea.tools import remove_special_chars
-from smtplib import SMTPAuthenticationError
 from email.header import Header
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
