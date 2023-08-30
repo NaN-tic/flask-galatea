@@ -14,7 +14,7 @@ from .signals import (login as slogin, failed_login as sfailed_login,
     logout as slogout, registration as sregistration)
 from .helpers import manager_required
 from trytond.transaction import Transaction
-from trytond.sendmail import sendmail_transactional, get_smtp_server, SMTPDataManager
+from trytond.sendmail import sendmail_transactional
 from trytond.modules.galatea.tools import remove_special_chars
 from smtplib import SMTPAuthenticationError
 from email.header import Header
@@ -415,14 +415,7 @@ def send_mail(user, subject, template):
     body.attach(MIMEText(html, 'html', _charset='utf-8'))
     msg.attach(body)
 
-    try:
-        datamanager = SMTPDataManager()
-        datamanager._server = get_smtp_server()
-        sendmail_transactional(from_addr, [to_addr], msg, datamanager=datamanager)
-    except SMTPAuthenticationError as e:
-        current_app.logger.error('Error send email!')
-        current_app.logger.error(str(e))
-        abort(500)
+    sendmail_transactional(from_addr, [to_addr], msg)
 
 def send_reset_email(user):
     """
