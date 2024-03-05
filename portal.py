@@ -100,6 +100,7 @@ class NewPasswordForm(Form):
     password = PasswordField(__('Password'), [validators.InputRequired(),
         validators.EqualTo('confirm', message=_('Passwords must match'))])
     confirm = PasswordField(__('Confirm Password'), [validators.InputRequired()])
+    is_reset_password = BooleanField(__('Is Reset Password'))
 
     def __init__(self, *args, **kwargs):
         Form.__init__(self, *args, **kwargs)
@@ -595,6 +596,7 @@ def new_password(lang):
             user, = users
             GalateaUser.write([user], {
                     'password': password,
+                    'activation_code': None, # sure has not activation_code
                     })
             data = {
                 'display_name': user.display_name,
@@ -618,6 +620,12 @@ def new_password(lang):
             flash(_("The passwords don't match or length is not valid! " \
                 "Add the new password another time and save."), "danger")
         form.reset()
+    else:
+        user = GalateaUser(session['user'])
+        # in case user has activaton_password, set current_password value from activation_code
+        if user.activation_code and len(user.activation_code) == 12:
+            form.current_password.data = user.activation_code
+            form.is_reset_password.data = True
 
     return render_template('new-password.html', form=form)
 
