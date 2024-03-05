@@ -532,7 +532,10 @@ def login(lang):
                 login = _validate_user(user, password)
                 if login:
                     login_user(user, remember=LOGIN_REMEMBER_ME)
-                    if (current_app.config.get('USE_SESSION_FOR_NEXT')
+
+                    if user.activation_code and len(user.activation_code) == 12:
+                        return redirect(url_for('.new-password', lang=g.language))
+                    elif (current_app.config.get('USE_SESSION_FOR_NEXT')
                             and session.get('next')):
                         return redirect(session['next'])
                     elif REDIRECT_AFTER_LOGIN:
