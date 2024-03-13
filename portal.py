@@ -96,17 +96,19 @@ class LoginForm(Form):
 
 class NewPasswordForm(Form):
     "New Password form"
-    current_password = PasswordField(__('Current Password'), [validators.InputRequired()])
+    current_password = PasswordField(__('Current Password'))
     password = PasswordField(__('Password'), [validators.InputRequired(),
         validators.EqualTo('confirm', message=_('Passwords must match'))])
     confirm = PasswordField(__('Confirm Password'), [validators.InputRequired()])
 
-    def __init__(self, *args, **kwargs):
+    def __init__(self, reset_password=False, *args, **kwargs):
         Form.__init__(self, *args, **kwargs)
+        if not reset_password:
+            self.current_password.validators += (validators.InputRequired(),)
 
     def validate(self):
         rv = Form.validate(self)
-        if not self._validate_password():
+        if not self._validate_current_password():
             flash(_("The current password is not correct."), "danger")
             return False
         if self.password.data != self.confirm.data:
@@ -121,11 +123,14 @@ class NewPasswordForm(Form):
             return False
         return True
 
-    def _validate_password(self):
+    def _validate_current_password(self):
         '''Validate if a password is valid for the user in session
         :param password: string
         return Bool
         '''
+        # in case send form when user do reset password, user don't know the current password
+        if session.get('reset_password'):
+            return True
         user = GalateaUser(session['user'])
         password = self.current_password.data
         if not password:
@@ -595,6 +600,7 @@ def new_password(lang):
             user, = users
             GalateaUser.write([user], {
                     'password': password,
+                    'activation_code': None, # sure has not activation_code
                     })
             data = {
                 'display_name': user.display_name,
@@ -604,19 +610,18 @@ def new_password(lang):
             return data
         return user
 
-    form = current_app.extensions['Galatea'].new_password_form()
+    reset_password = session.get('reset_password', False)
+    form = current_app.extensions['Galatea'].new_password_form(reset_password=reset_password)
+    if not reset_password:
+        form.current_password.flags.required = True
     if form.validate_on_submit():
         password = request.form.get('password')
-        confirm = request.form.get('confirm')
-        if password == confirm and \
-                len(password) >= current_app.config.get('LEN_PASSWORD', 6):
-            user = _save_password(password)
-            if user and SEND_NEW_PASSWORD:
-                send_new_password(user)
-            flash(_('The password has been saved.'))
-        else:
-            flash(_("The passwords don't match or length is not valid! " \
-                "Add the new password another time and save."), "danger")
+        user = _save_password(password)
+        if user and SEND_NEW_PASSWORD:
+            send_new_password(user)
+        if reset_password:
+            session.pop('reset_password', None)
+        flash(_('The password has been saved.'))
         form.reset()
 
     return render_template('new-password.html', form=form)
@@ -713,6 +718,8 @@ def activate(lang):
             elif len(act_code) == 12:
                 login_user(user, remember=LOGIN_REMEMBER_ME)
                 flash(_('You are logged in'))
+                # set reset_password session because user don't know current passord
+                session['reset_password'] = True
                 # Not signal login because cannot execute UPDATE in a read-only
                 # transaction
                 return redirect(url_for('.new-password', lang=g.language))
