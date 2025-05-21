@@ -3,7 +3,6 @@
 #the full copyright notices and license terms.
 from flask import current_app
 from trytond.config import config as tryton_config
-from slug import slug
 from PIL import Image
 import os
 
@@ -24,17 +23,6 @@ def get_tryton_locale(lang):
     if languages.get(lang):
         return languages.get(lang)
     return languages.get('en')
-
-def slugify(value):
-    """Convert value to slug: az09 and replace spaces by -"""
-    try:
-        if isinstance(value):
-            name = slug(value)
-        else:
-            name = slug(str(value, 'UTF-8'))
-    except:
-        name = ''
-    return name
 
 def thumbnail(filename, thumbname, size, crop=None, quality=85):
     '''Create thumbnail image
