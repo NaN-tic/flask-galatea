@@ -3,19 +3,21 @@
 from flask import (Blueprint, render_template, current_app, redirect, abort,
 session, request)
 from trytond.transaction import Transaction
-from .tryton import tryton
-from .helpers import cache
+from app_extensions import tryton
+from .helpers import get_cache
 
-GALATEA_WEBSITE = current_app.config.get('TRYTON_GALATEA_SITE')
 COMPUTE_CACHE_KEY = None
 
 galatea = Blueprint('galatea', __name__, template_folder='templates')
 
-Uri = tryton.pool.get('galatea.uri')
+def get_galatea_website():
+    return current_app.config.get("TRYTON_GALATEA_SITE")
 
 def set_compute_cache_key(cache_key):
     global COMPUTE_CACHE_KEY
     COMPUTE_CACHE_KEY = cache_key
+
+
 
 @galatea.route("/<path:uri_str>", endpoint="uri")
 @tryton.transaction()
@@ -23,6 +25,11 @@ def uri(uri_str):
     '''Process URI'''
     if uri_str and uri_str.endswith('/'):
         return redirect('/' + uri_str.rstrip('/'), code=303)
+
+    Uri = tryton.pool.get('galatea.uri')
+
+    cache = get_cache()
+    website = get_galatea_website()
 
     if cache:
         use_cache = request.args.get('use_cache', '')
@@ -38,12 +45,11 @@ def uri(uri_str):
     else:
         use_cache = False
 
-
-    with Transaction().set_context(website=GALATEA_WEBSITE):
+    with Transaction().set_context(website=website):
         uris = Uri.search([
             ('uri', '=', uri_str),
             ('active', '=', True),
-            ('website', '=', GALATEA_WEBSITE),
+            ('website', '=', website),
             ('anchor', '=', False),
             ], limit=1)
         if uris:
