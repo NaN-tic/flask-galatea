@@ -304,7 +304,7 @@ class RegistrationForm(Form):
                 party.contact_mechanisms = contact_datas
 
             # save party
-            party, = Party.create([party._save_values])
+            party, = Party.create([party._save_values()])
 
         user_data = {
             'display_name': name,
