@@ -49,7 +49,6 @@ def cached(timeout=5 * 60, key="view/%s"):
                 rv = f(*args, **kwargs)
                 cache.set(cache_key, rv, timeout=timeout)
                 return rv
-            # Si no hi ha cache, simplement executa
             return f(*args, **kwargs)
         return decorated_function
     return decorator
