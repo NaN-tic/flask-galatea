@@ -4,8 +4,6 @@
 from flask import redirect, url_for, session,  request, current_app, abort
 from functools import wraps
 
-cache = getattr(current_app, 'cache', None)
-
 def secure(function):
     @wraps(function)
     def decorated_function(*args, **kwargs):
@@ -33,11 +31,17 @@ def manager_required(f):
         return f(*args, **kwargs)
     return decorated_function
 
-if cache:
-    def cached(timeout=5 * 60, key='view/%s'):
-        def decorator(f):
-            @wraps(f)
-            def decorated_function(*args, **kwargs):
+def get_cache():
+    """Retorna la instància de cache configurada a current_app, si existeix."""
+    return getattr(current_app, "cache", None)
+
+def cached(timeout=5 * 60, key="view/%s"):
+    """Decorator per cachejar la sortida d'una vista Flask."""
+    def decorator(f):
+        @wraps(f)
+        def decorated_function(*args, **kwargs):
+            cache = get_cache()
+            if cache:
                 cache_key = key
                 rv = cache.get(cache_key)
                 if rv is not None:
@@ -45,13 +49,6 @@ if cache:
                 rv = f(*args, **kwargs)
                 cache.set(cache_key, rv, timeout=timeout)
                 return rv
-            return decorated_function
-        return decorator
-else:
-    def cached(timeout=5 * 60, key='view/%s'):
-        def decorator(f):
-            @wraps(f)
-            def decorated_function(*args, **kwargs):
-                return f(*args, **kwargs)
-            return decorated_function
-        return decorator
+            return f(*args, **kwargs)
+        return decorated_function
+    return decorator

@@ -9,7 +9,8 @@ from wtforms import (BooleanField, StringField, PasswordField, SelectField,
     HiddenField, validators, EmailField)
 from flask_login import (UserMixin, login_user, logout_user, login_required,
     current_user)
-from .tryton import tryton
+from app_extensions import tryton
+
 from .signals import (login as slogin, failed_login as sfailed_login,
     logout as slogout, registration as sregistration)
 from .helpers import manager_required
@@ -35,34 +36,9 @@ except ImportError:
 
 portal = Blueprint('portal', __name__, template_folder='templates')
 
-GALATEA_WEBSITE = current_app.config.get('TRYTON_GALATEA_SITE')
-REGISTRATION_VAT = current_app.config.get('REGISTRATION_VAT')
-REGISTRATION_VAT_CHECK_CUSTOMER = current_app.config.get(
-    'REGISTRATION_VAT_CHECK_CUSTOMER', False)
-DEFAULT_COUNTRY = current_app.config.get('DEFAULT_COUNTRY')
-DEFAULT_LANGUAGE = current_app.config.get('LANGUAGE')
-REDIRECT_AFTER_LOGIN = current_app.config.get('REDIRECT_AFTER_LOGIN')
-REDIRECT_AFTER_LOGOUT = current_app.config.get('REDIRECT_AFTER_LOGOUT')
-LOGIN_REMEMBER_ME = current_app.config.get('LOGIN_REMEMBER_ME', False)
-LOGIN_EXTRA_FIELDS = current_app.config.get('LOGIN_EXTRA_FIELDS', [])
-SEND_NEW_PASSWORD = current_app.config.get('SEND_NEW_PASSWORD', True)
-AUTOLOGIN_POSTREGISTRATION = current_app.config.get('AUTOLOGIN_POSTREGISTRATION')
-REGISTRATION_MANUAL = current_app.config.get('REGISTRATION_MANUAL')
-
 VAT_COUNTRIES = [('', '')]
 for country in sorted(vat.MEMBER_STATES):
     VAT_COUNTRIES.append((country, country.upper()))
-
-GalateaUser = tryton.pool.get('galatea.user')
-Website = tryton.pool.get('galatea.website')
-Party = tryton.pool.get('party.party')
-ContactMechanism = tryton.pool.get('party.contact_mechanism')
-PartyIdentifier = tryton.pool.get('party.identifier')
-Country = tryton.pool.get('country.country')
-Subdivision = tryton.pool.get('country.subdivision')
-SubdivisionType = tryton.pool.get('party.address.subdivision_type')
-Lang = tryton.pool.get('ir.lang')
-
 
 def _get_vat_code(vat_country, vat_number):
     eu_vat = False
@@ -74,9 +50,14 @@ def _get_vat_code(vat_country, vat_number):
         vat_code = vat_number
     return vat_code, eu_vat
 
+
 class User(UserMixin):
-    "Login User Mixin"
-    pass
+    def __init__(self, id=None, display_name=None, party=None, email=None, manager=None):
+        self.id = id
+        self.display_name = display_name
+        self.party = party
+        self.email = email
+        self.manager = manager
 
 
 class LoginForm(Form):
@@ -86,12 +67,6 @@ class LoginForm(Form):
 
     def __init__(self, *args, **kwargs):
         Form.__init__(self, *args, **kwargs)
-
-    def validate(self):
-        rv = Form.validate(self)
-        if not rv:
-            return False
-        return True
 
 
 class NewPasswordForm(Form):
@@ -106,8 +81,8 @@ class NewPasswordForm(Form):
         if not reset_password:
             self.current_password.validators += (validators.InputRequired(),)
 
-    def validate(self):
-        rv = Form.validate(self)
+    def validate(self, extra_validators=None):
+        rv = Form.validate(self, extra_validators=extra_validators)
         if not self._validate_current_password():
             flash(_("The current password is not correct."), "danger")
             return False
@@ -128,6 +103,8 @@ class NewPasswordForm(Form):
         :param password: string
         return Bool
         '''
+        GalateaUser = tryton.pool.get('galatea.user')
+
         # in case send form when user do reset password, user don't know the current password
         if session.get('reset_password'):
             return True
@@ -159,8 +136,8 @@ class ResetPasswordForm(Form):
     def __init__(self, *args, **kwargs):
         Form.__init__(self, *args, **kwargs)
 
-    def validate(self):
-        rv = Form.validate(self)
+    def validate(self, extra_validators=None):
+        rv = Form.validate(self, extra_validators=extra_validators)
         if not rv:
             return False
         return True
@@ -171,25 +148,25 @@ class ResetPasswordForm(Form):
 
 class RegistrationForm(Form):
     "Registration form"
-    vat_required = None
-    if REGISTRATION_VAT:
-        vat_required = [validators.InputRequired()]
-
     name = StringField(__('Name'), [validators.InputRequired()])
     email = StringField(__('Email'), [validators.InputRequired(), validators.Email()])
     password = PasswordField(__('Password'), [validators.InputRequired()])
     confirm = PasswordField(__('Confirm Password'), [validators.InputRequired()])
     phone = StringField(__('Phone'))
     vat_country = SelectField(__('VAT Country'), choices=VAT_COUNTRIES)
-    vat_number = StringField(__('VAT Number'), vat_required)
+    vat_number = StringField(__('VAT Number'))
     code = StringField(__('Code'))
     language = SelectField(__('Language'))
     agree = BooleanField(__('Agree'), [validators.InputRequired()])
 
     def __init__(self, *args, **kwargs):
         Form.__init__(self, *args, **kwargs)
+        if current_app.config.get('REGISTRATION_VAT'):
+            self.vat_number.validators.append(validators.InputRequired())
 
-    def validate(self):
+    def validate(self, extra_validators=None):
+        DEFAULT_LANGUAGE = current_app.config.get('LANGUAGE')
+
         # remove select fields to validate without choices and not required
         for field in self._fields.copy():
             if getattr(self, field).type == 'SelectField':
@@ -199,7 +176,7 @@ class RegistrationForm(Form):
             self.vat_country.data = ''
         if not self.language.data:
             self.language.data = g.language or DEFAULT_LANGUAGE
-        rv = Form.validate(self)
+        rv = Form.validate(self, extra_validators=extra_validators)
         if not rv:
             return False
         return True
@@ -211,6 +188,16 @@ class RegistrationForm(Form):
         self.agree.data = False
 
     def save(self, send_act_code=True):
+        GalateaUser = tryton.pool.get('galatea.user')
+        Party = tryton.pool.get('party.party')
+        ContactMechanism = tryton.pool.get('party.contact_mechanism')
+        PartyIdentifier = tryton.pool.get('party.identifier')
+        Lang = tryton.pool.get('ir.lang')
+
+        REGISTRATION_VAT_CHECK_CUSTOMER = current_app.config.get(
+            'REGISTRATION_VAT_CHECK_CUSTOMER', False)
+        AUTOLOGIN_POSTREGISTRATION = current_app.config.get('AUTOLOGIN_POSTREGISTRATION')
+
         name = request.form.get('name')
         email = request.form.get('email')
         password = request.form.get('password', '')
@@ -317,6 +304,11 @@ class RegistrationForm(Form):
         return {'user': user}
 
     def check(self):
+        Party = tryton.pool.get('party.party')
+
+        REGISTRATION_VAT_CHECK_CUSTOMER = current_app.config.get(
+            'REGISTRATION_VAT_CHECK_CUSTOMER', False)
+
         password = request.form.get('password')
         confirm = request.form.get('confirm')
         email = request.form.get('email')
@@ -358,8 +350,8 @@ class ActivateForm(Form):
     def __init__(self, *args, **kwargs):
         Form.__init__(self, *args, **kwargs)
 
-    def validate(self):
-        rv = Form.validate(self)
+    def validate(self, extra_validators=None):
+        rv = Form.validate(self, extra_validators=extra_validators)
         if not rv:
             return False
         return True
@@ -448,6 +440,11 @@ def _get_user(email, active=True):
     :param active: bool
     return user or None
     '''
+    GalateaUser = tryton.pool.get('galatea.user')
+
+    GALATEA_WEBSITE = current_app.config.get('TRYTON_GALATEA_SITE')
+    LOGIN_EXTRA_FIELDS = current_app.config.get('LOGIN_EXTRA_FIELDS', [])
+
     user = None
     fields = [
         'party',
@@ -475,6 +472,12 @@ def _get_user(email, active=True):
 @tryton.transaction()
 def login(lang):
     '''Login App'''
+    GalateaUser = tryton.pool.get('galatea.user')
+    Website = tryton.pool.get('galatea.website')
+
+    GALATEA_WEBSITE = current_app.config.get('TRYTON_GALATEA_SITE')
+    REDIRECT_AFTER_LOGIN = current_app.config.get('REDIRECT_AFTER_LOGIN')
+
     data = {}
 
     if not current_app.config.get('ACTIVE_LOGIN'):
@@ -535,7 +538,16 @@ def login(lang):
                 user, = users
                 login = _validate_user(user, password)
                 if login:
-                    login_user(user, remember=LOGIN_REMEMBER_ME)
+                    user_data = {
+                        'id': user.id,
+                        'display_name': user.display_name,
+                        'party': user.party.id,
+                        'email': user.email,
+                        'manager': user.manager,
+                        }
+                    session['user_data'] = user_data
+                    login_user(User(**user_data))
+
                     if (current_app.config.get('USE_SESSION_FOR_NEXT')
                             and session.get('next')):
                         return redirect(session['next'])
@@ -563,6 +575,7 @@ def login(lang):
 @tryton.transaction()
 def logout(lang):
     '''Logout App'''
+    REDIRECT_AFTER_LOGOUT = current_app.config.get('REDIRECT_AFTER_LOGOUT')
 
     if not current_app.config.get('ACTIVE_LOGIN'):
         abort(404)
@@ -586,6 +599,9 @@ def logout(lang):
 @tryton.transaction()
 def new_password(lang):
     '''New Password User Account'''
+    GalateaUser = tryton.pool.get('galatea.user')
+
+    SEND_NEW_PASSWORD = current_app.config.get('SEND_NEW_PASSWORD', True)
 
     def _save_password(password):
         '''Save new password user
@@ -630,6 +646,8 @@ def new_password(lang):
 @tryton.transaction()
 def reset_password(lang):
     '''Reset Password User Account'''
+    GalateaUser = tryton.pool.get('galatea.user')
+
     if not current_app.config.get('ACTIVE_LOGIN'):
         abort(404)
 
@@ -673,6 +691,11 @@ def reset_password(lang):
 @tryton.transaction(readonly=False)
 def activate(lang):
     '''Activate user account'''
+    GalateaUser = tryton.pool.get('galatea.user')
+
+    REDIRECT_AFTER_LOGIN = current_app.config.get('REDIRECT_AFTER_LOGIN')
+    LOGIN_REMEMBER_ME = current_app.config.get('LOGIN_REMEMBER_ME', False)
+
     act_code = request.args.get('act_code')
     email = request.args.get('email')
     now = datetime.datetime.now()
@@ -731,6 +754,15 @@ def activate(lang):
 @tryton.transaction()
 def registration(lang):
     '''Registration User Account'''
+    Website = tryton.pool.get('galatea.website')
+
+    GALATEA_WEBSITE = current_app.config.get('TRYTON_GALATEA_SITE')
+    DEFAULT_COUNTRY = current_app.config.get('DEFAULT_COUNTRY')
+    DEFAULT_LANGUAGE = current_app.config.get('LANGUAGE')
+    LOGIN_REMEMBER_ME = current_app.config.get('LOGIN_REMEMBER_ME', False)
+    AUTOLOGIN_POSTREGISTRATION = current_app.config.get('AUTOLOGIN_POSTREGISTRATION')
+    REGISTRATION_MANUAL = current_app.config.get('REGISTRATION_MANUAL')
+
     if not current_app.config.get('ACTIVE_REGISTRATION'):
         abort(404)
 
@@ -799,6 +831,10 @@ def registration(lang):
 @tryton.transaction()
 def subdivisions(lang):
     '''Return all subdivisions by country (Json)'''
+    Country = tryton.pool.get('country.country')
+    Subdivision = tryton.pool.get('country.subdivision')
+    SubdivisionType = tryton.pool.get('party.address.subdivision_type')
+
     try:
         country_id = int(request.args.get('country', 0))
     except ValueError:
