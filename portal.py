@@ -722,7 +722,9 @@ def activate(lang):
                     flash(_('Your account has been activated.'))
                     slogin.send(current_app._get_current_object(),
                         user=user.id,
-                        session=session.sid,
+                        # Flask uses client-side signed cookies (SecureCookieSession).
+                        # Session state is not stored on the server, so no `session.sid` exists.
+                        # session=session.sid,
                         website=current_app.config.get('TRYTON_GALATEA_SITE',
                             None),
                         )
