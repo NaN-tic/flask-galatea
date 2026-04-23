@@ -162,7 +162,9 @@ class RegistrationForm(Form):
     def __init__(self, *args, **kwargs):
         Form.__init__(self, *args, **kwargs)
         if current_app.config.get('REGISTRATION_VAT'):
-            self.vat_number.validators.append(validators.InputRequired())
+            self.vat_number.validators = tuple(self.vat_number.validators) + (
+                validators.InputRequired(),
+            )
 
     def validate(self, extra_validators=None):
         DEFAULT_LANGUAGE = current_app.config.get('LANGUAGE')
