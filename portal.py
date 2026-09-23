@@ -24,6 +24,7 @@ from email import charset
 
 import os
 import stdnum.eu.vat as vat
+from stdnum.es import cif, dni, nie, nif
 import random
 import string
 import datetime
@@ -41,14 +42,47 @@ for country in sorted(vat.MEMBER_STATES):
     VAT_COUNTRIES.append((country, country.upper()))
 
 def _get_vat_code(vat_country, vat_number):
-    eu_vat = False
-    if vat_country and vat_number:
-        eu_vat = True
-        vat_code = '%s%s' % (vat_country.upper(), vat_number)
-        vat_code = vat.compact(vat_code)
-    elif vat_number:
-        vat_code = vat_number
-    return vat_code, eu_vat
+    country = (vat_country or '').strip().upper()
+    number = (vat_number or '').strip().upper()
+    if not number:
+        return None, None
+    if country == 'ES':
+        code = nif.compact(number)
+        for identifier_type, validator in (
+                ('es_cif', cif), ('es_dni', dni), ('es_nie', nie),
+                ('es_vat', nif)):
+            if validator.is_valid(code):
+                return code, identifier_type
+        raise ValueError('Invalid Spanish identifier')
+    if country:
+        if not number.startswith(country):
+            number = country + number
+        code = vat.compact(number)
+        if not vat.is_valid(code):
+            raise ValueError('Invalid EU VAT identifier')
+        return code, 'eu_vat'
+    return number, None
+
+
+def _get_identifier_domain(code, identifier_type):
+    spanish_types = ['es_cif', 'es_dni', 'es_nie', 'es_vat']
+    if identifier_type in spanish_types:
+        return [
+            'OR',
+            [('type', 'in', spanish_types), ('code', '=', code)],
+            [('type', '=', 'eu_vat'), ('code', '=', 'ES' + code)],
+            ]
+    return [('type', '=', identifier_type), ('code', '=', code)]
+
+
+def _get_vat_parties(code, identifier_type):
+    if not code or not identifier_type:
+        return []
+    Identifier = tryton.pool.get('party.identifier')
+    identifiers = Identifier.search(
+        _get_identifier_domain(code, identifier_type))
+    return list({identifier.party.id: identifier.party
+        for identifier in identifiers}.values())
 
 
 class User(UserMixin):
@@ -222,17 +256,11 @@ class RegistrationForm(Form):
                     'password?'), 'danger')
             return
 
-        eu_vat = False
-        vat_code = None
-        if vat_country and vat_number:
-            eu_vat = True
-            vat_code = '%s%s' % (vat_country.upper(), vat_number)
-            vat_code = vat.compact(vat_code)
-            if not vat.is_valid(vat_code):
-                flash(_('VAT number is not valid.'), 'danger')
-                return
-        elif vat_number:
-            vat_code = vat_number
+        try:
+            vat_code, identifier_type = _get_vat_code(vat_country, vat_number)
+        except ValueError:
+            flash(_('VAT number is not valid.'), 'danger')
+            return
 
         if AUTOLOGIN_POSTREGISTRATION or not send_act_code:
             act_code = None
@@ -249,10 +277,12 @@ class RegistrationForm(Form):
             contact, = contacts
             party = contact.party
         # search if vat exist
-        if eu_vat and vat_code:
-            parties = Party.search([
-                ('tax_identifier', '=', vat_code),
-                ], limit=1)
+        if identifier_type and vat_code:
+            parties = _get_vat_parties(vat_code, identifier_type)
+            if len(parties) > 1:
+                flash(_('Multiple customers have this VAT. Please contact us.'),
+                    'danger')
+                return
             if parties:
                 if REGISTRATION_VAT_CHECK_CUSTOMER:
                     flash(_('A customer exists with your VAT. Please, '
@@ -278,7 +308,7 @@ class RegistrationForm(Form):
             if vat_code:
                 identifier = PartyIdentifier()
                 identifier.code = vat_code
-                identifier.type = 'eu_vat' if eu_vat else None
+                identifier.type = identifier_type
                 party.identifiers = [identifier]
 
             # contact mechanisms
@@ -306,8 +336,6 @@ class RegistrationForm(Form):
         return {'user': user}
 
     def check(self):
-        Party = tryton.pool.get('party.party')
-
         REGISTRATION_VAT_CHECK_CUSTOMER = current_app.config.get(
             'REGISTRATION_VAT_CHECK_CUSTOMER', False)
 
@@ -328,13 +356,16 @@ class RegistrationForm(Form):
                     'password?'), 'danger')
             return False
 
-        vat_code, eu_vat = _get_vat_code(vat_country, vat_number)
-        if not vat.is_valid(vat_code):
+        try:
+            vat_code, identifier_type = _get_vat_code(vat_country, vat_number)
+        except ValueError:
             flash(_('VAT number is not valid.'), 'danger')
             return False
-        parties = Party.search([
-            ('tax_identifier', '=', vat_code),
-            ], limit=1)
+        parties = _get_vat_parties(vat_code, identifier_type)
+        if len(parties) > 1:
+            flash(_('Multiple customers have this VAT. Please contact us.'),
+                'danger')
+            return False
         if parties:
             if REGISTRATION_VAT_CHECK_CUSTOMER:
                 flash(_('A customer exists with your VAT. Please, '
